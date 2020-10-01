@@ -10,9 +10,9 @@ pkg_check_modules(Flann flann)
 include_directories(${Flann_INCLUDE_DIR})
 link_directories(${Flann_LIBDIR})
 
-pkg_check_modules(LZ4 REQUIRED liblz4)
+pkg_check_modules(LZ4 REQUIRED)
 include_directories(${LZ4_INCLUDE_DIRS})
-link_directories(${LZ4_LIBRARY_DIRS})
+link_directories(${LZ4_LIBRARY_DIR})
 
 include_directories(include)
 
@@ -34,7 +34,7 @@ add_executable(follower src/follower_node.cpp)
 target_link_libraries(follower ${catkin_LIBRARIES})
 
 add_executable(planner src/planner_node.cpp)
-target_link_libraries(planner ${catkin_LIBRARIES} ${Flann_LIBRARY} ${LZ4_LIBRARY})
+target_link_libraries(planner ${catkin_LIBRARIES} ${Flann_LIBRARY} lz4)
 
 install(
     TARGETS
