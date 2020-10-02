@@ -5,6 +5,8 @@ add_compile_options(-std=c++11)
 
 find_package(Boost COMPONENTS graph REQUIRED)
 
+find_package(Eigen3 REQUIRED NO_MODULE)
+
 find_package(PkgConfig)
 pkg_check_modules(Flann flann)
 include_directories(${Flann_INCLUDE_DIR})
@@ -34,7 +36,7 @@ add_executable(follower src/follower_node.cpp)
 target_link_libraries(follower ${catkin_LIBRARIES})
 
 add_executable(planner src/planner_node.cpp)
-target_link_libraries(planner ${catkin_LIBRARIES} ${Flann_LIBRARY} lz4)
+target_link_libraries(planner ${catkin_LIBRARIES} Eigen3::Eigen ${Flann_LIBRARY} lz4)
 
 install(
     TARGETS

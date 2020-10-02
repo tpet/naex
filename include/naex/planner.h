@@ -6,6 +6,7 @@
 #define NAEX_PLANNER_H
 
 #include <cmath>
+#include <Eigen/Dense>
 #include <flann/flann.hpp>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
@@ -40,6 +41,129 @@ namespace naex
         }
         return nullptr;
     }
+
+    template<typename V>
+    class ValueIterator
+    {
+    public:
+        ValueIterator(const V& val):
+                value_(val)
+        {}
+        ValueIterator& operator++() { value_++; return *this; }
+        ValueIterator& operator--() { value_--; return *this; }
+        bool operator!=(const ValueIterator<V>& other) { return value_ != other.value_; }
+        V& operator*() { return value_; }
+        const V& operator*() const { return value_; }
+    private:
+        V value_;
+    };
+
+    // Point cloud position and normal element type
+    typedef float Elem;
+    typedef Eigen::Matrix<Elem, 3, 1, Eigen::DontAlign> Vec3;
+    typedef Eigen::Map<Vec3> Vec3Map;
+    typedef Eigen::Map<const Vec3> ConstVec3Map;
+    typedef Eigen::Matrix<Elem, 2, 1, Eigen::DontAlign> Vec2;
+    typedef Eigen::Map<Vec2> Vec2Map;
+    typedef Eigen::Map<const Vec3> ConstVec2Map;
+    // Vertex and edge indices
+    typedef uint32_t Vertex;
+    typedef uint32_t Edge;
+    // Edge cost or length
+    typedef Elem Cost;
+
+    typedef ValueIterator<Vertex> VertexIter;
+    typedef ValueIterator<Edge> EdgeIter;
+
+    class Graph
+    {
+    public:
+        Graph(flann::Matrix<Elem> points, flann::Matrix<Elem> normals):
+                points_(points),
+                points_index_(points_, flann::KDTreeIndexParams(4)),
+                normals_(normals)
+        {}
+
+        void compute(Vertex k, Elem radius)
+        {
+            dist_buf_.reset(new Elem[num_vertices() * k]);
+            nn_buf_.reset(new int[num_vertices() * k]);
+            dist_ = flann::Matrix<Cost>(dist_buf_.get(), num_vertices(), k);
+            nn_ = flann::Matrix<int>(nn_buf_.get(), num_vertices(), k);
+            flann::SearchParams params;
+            params.max_neighbors = k;
+            points_index_.radiusSearch(points_, nn_, dist_, radius, params);
+        }
+
+        inline Vertex num_vertices() const
+        {
+            return nn_.rows;
+        }
+        inline Edge num_edges() const
+        {
+            return nn_.cols;
+        }
+        inline std::pair<VertexIter, VertexIter> vertices() const
+        {
+            return {0, num_vertices()};
+        }
+
+        inline std::pair<EdgeIter, EdgeIter> out_edges(const Vertex& u) const
+        {
+            // TODO: Limit to valid edges here or just by costs?
+            return {u * num_edges(), (u + 1) * num_edges()};
+        }
+        inline Edge out_degree(const Vertex& u) const
+        {
+            return num_edges();
+        }
+        inline Vertex source(const Edge& e) const
+        {
+            return e / num_edges();
+        }
+        inline Vertex target(const Edge& e) const
+        {
+            return nn_[source(e)][e % num_edges()];
+        }
+        inline Cost cost(const Edge& e) const
+        {
+            const auto v0 = source(e);
+            const auto v1 = target(e);
+            Vec2 xy_dir = Vec2Map(points_[v1]) - Vec2Map(points_[v0]);
+            Elem height_diff = points_[v1][2] - points_[v0][2];
+            Elem inclination = std::atan(height_diff / xy_dir.norm());
+            if (inclination > max_pitch_)
+                return std::numeric_limits<Cost>::infinity();
+            // TODO: Check pitch and roll separately.
+            Elem pitch0 = std::acos(normals_[v0][2]);
+            if (pitch0 > max_pitch_)
+                return std::numeric_limits<Cost>::infinity();
+            Elem pitch1 = std::acos(normals_[v0][2]);
+            if (pitch1 > max_pitch_)
+                return std::numeric_limits<Cost>::infinity();
+            float roll0 = 0.f;
+            float roll1 = 0.f;
+            // Initialize with distance computed in NN search.
+            Cost d = dist_[v0][e % num_edges()];
+            // Multiple with relative pitch and roll.
+            d *= (1.f + (pitch0 + pitch1 + inclination) / 3.f / max_pitch_ + (roll0 + roll1) / 2.f / max_roll_);
+            std::cout << v0 << " -> " << v1 << ": " << d << std::endl;
+            return d;
+        }
+
+        flann::Matrix<Elem> points_;
+        flann::Index<flann::L2<Cost>> points_index_;
+        flann::Matrix<Elem> normals_;
+
+        // NN and distances
+        std::unique_ptr<int[]> nn_buf_;
+        std::unique_ptr<Cost[]> dist_buf_;
+        flann::Matrix<int> nn_;
+        flann::Matrix<Cost> dist_;
+
+        float max_pitch_;
+        float max_roll_;
+    };
 
     class Planner
     {
@@ -87,24 +211,21 @@ namespace naex
 
             // TODO: Recompute normals.
             // TODO: Build map from all aligned input clouds (interp tf).
-            sensor_msgs::PointCloud2ConstIterator<float> iter_nx(cloud, "normal_x");
-            const flann::Matrix<float> nx(const_cast<float*>(&iter_nx[0]), n_pts, 3, cloud.point_step);
+            sensor_msgs::PointCloud2ConstIterator<Elem> it_normals(cloud, "normal_x");
+            const flann::Matrix<Elem> normals(const_cast<float*>(&it_normals[0]), n_pts, 3, cloud.point_step);
 
             // Create NN index.
-            sensor_msgs::PointCloud2ConstIterator<float> iter_x(cloud, "x");
-            const flann::Matrix<float> x(const_cast<float*>(&iter_x[0]), n_pts, 3, cloud.point_step);
-            const flann::Index<flann::L2<float>> index(x, flann::KDTreeIndexParams(4));
+            sensor_msgs::PointCloud2ConstIterator<Elem> it_points(cloud, "x");
+            const flann::Matrix<Elem> points(const_cast<Elem*>(&it_points[0]), n_pts, 3, cloud.point_step);
 
             // Construct NN graph.
-            std::unique_ptr<float[]> dist_buf(new float[n_pts * neighborhood_knn_]);
-            std::unique_ptr<int[]> ind_buf(new int[n_pts * neighborhood_knn_]);
-            // Otherwise, one has cast const away from cloud data above.
-            flann::Matrix<float> dist(dist_buf.get(), n_pts, neighborhood_knn_);
-            flann::Matrix<int> ind(ind_buf.get(), n_pts, neighborhood_knn_);
-            flann::SearchParams params;
-            params.max_neighbors = neighborhood_knn_;
-            index.radiusSearch(x, ind, dist, neighborhood_radius_, params);
+            Graph graph(points, normals);
+            graph.compute(neighborhood_knn_, neighborhood_radius_);
 
+            // Plan in NN graph with approx. travel time costs.
+
+            // Add penalty for initial rotation: + abs(angle_err) / angular_max.
+            // Subtract utility from visiting the frontiers: - observation distance.
         }
 
         void cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
