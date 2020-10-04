@@ -8,7 +8,7 @@ find_package(Boost COMPONENTS graph REQUIRED)
 find_package(Eigen3 REQUIRED NO_MODULE)
 
 find_package(PkgConfig)
-pkg_check_modules(Flann flann)
+pkg_check_modules(Flann REQUIRED)
 include_directories(${Flann_INCLUDE_DIR})
 link_directories(${Flann_LIBDIR})
 
@@ -31,6 +31,10 @@ set(CATKIN_DEPS
 find_package(catkin REQUIRED COMPONENTS ${CATKIN_DEPS})
 include_directories(${catkin_INCLUDE_DIRS})
 link_directories(${catkin_LIBRARY_DIRS})
+
+catkin_package(
+    CATKIN_DEPENDS ${CATKIN_DEPS}
+)
 
 add_executable(follower src/follower_node.cpp)
 target_link_libraries(follower ${catkin_LIBRARIES})
