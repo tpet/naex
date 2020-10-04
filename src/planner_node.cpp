@@ -7,6 +7,7 @@
 
 int main (int argc, char *argv[])
 {
+    ros::init(argc, argv, "planner");
     ros::NodeHandle nh, pnh("~");
     naex::Planner planner(nh, pnh);
     ros::spin();
