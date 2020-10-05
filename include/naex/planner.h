@@ -720,13 +720,16 @@ namespace naex
             Vec3 start_position(start.pose.position.x, start.pose.position.y, start.pose.position.z);
             Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), 128);
             Vertex v_start = start_query.nn_buf_[0];
-            Elem forward = -std::numeric_limits<Elem>::infinity();
+            Elem min_dist = std::numeric_limits<Elem>::infinity();
             for (const auto& v: start_query.nn_buf_)
             {
-                if (g.labels_[v] == TRAVERSABLE && points[v][0] > forward)
+                if (g.labels_[v] != TRAVERSABLE)
+                    continue;
+                Elem dist = (ConstVec3Map(points[v]) - start_position).norm();
+                if (dist < min_dist)
                 {
                     v_start = v;
-                    forward = points[v][0];
+                    min_dist = dist;
                 }
             }
             // TODO: Append starting pose as a special vertex with orientation dependent edges.
