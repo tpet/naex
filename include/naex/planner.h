@@ -716,10 +716,22 @@ namespace naex
             fill_field("final_label", g.labels_.begin(), debug_cloud);
             final_label_cloud_pub_.publish(debug_cloud);
 
-            // Use the nearest point to robot as the starting point.
+            // Use the nearest traversable point to robot as the starting point.
             Vec3 start_position(start.pose.position.x, start.pose.position.y, start.pose.position.z);
-            Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), 1);
+            Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), 128);
             Vertex v_start = start_query.nn_buf_[0];
+            Elem forward = -std::numeric_limits<Elem>::infinity();
+            for (const auto& v: start_query.nn_buf_)
+            {
+                if (g.labels_[v] == TRAVERSABLE && points[v][0] > forward)
+                {
+                    v_start = v;
+                    forward = points[v][0];
+                }
+            }
+            // TODO: Append starting pose as a special vertex with orientation dependent edges.
+            // Note, that for some worlds and robots, the neighborhood must be quite large to get traversable points.
+            // See e.g. X1 @ cave_circuit_practice_01.
 
             // Plan in NN graph with approx. travel time costs.
             Buffer<Vertex> predecessor(g.num_vertices());
