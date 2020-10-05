@@ -143,7 +143,7 @@ namespace naex
                 dist_(dist_buf_.begin(), queries.rows, k)
         {
             flann::SearchParams params;
-            params.cores = 4;
+            params.cores = 0;
             index.knnSearch(queries, nn_, dist_, k, params);
         }
         Buffer<int> nn_buf_;
@@ -268,7 +268,14 @@ namespace naex
                 Elem max_height_diff = -std::numeric_limits<Elem>::infinity();
                 for (size_t j = 0; j < nn_.cols; ++j)
                 {
+                    // Avoid driving near obstacles.
                     const auto v1 = nn_[v0][j];
+                    if (dist_[v0][j] <= radius_ && labels_[v1] == OBSTACLE)
+                    {
+                        labels_[v0] = UNKNOWN;
+                        ++n_adjusted;
+                        break;
+                    }
                     Elem height_diff = Vec3Map(normals_[v0]).dot(Vec3Map(points_[v1]) - Vec3Map(points_[v0]));
                     if (height_diff < min_height_diff)
                     {
@@ -315,7 +322,7 @@ namespace naex
             t.reset();
             flann::SearchParams params;
             params.checks = 64;
-            params.cores = 4;
+            params.cores = 0;
 //            params.max_neighbors = k;
 //            points_index_.radiusSearch(points_, nn_, dist_, radius, params);
             points_index_.knnSearch(points_, nn_, dist_, k, params);
@@ -533,6 +540,8 @@ namespace naex
                 max_nn_height_diff_(0.15),
                 viewpoints_update_freq_(1.),
                 viewpoints_(),
+                min_vp_distance_(1.5),
+                max_vp_distance_(5.),
                 queue_size_(5.)
         {
             configure();
@@ -548,10 +557,13 @@ namespace naex
             pnh_.param("max_cloud_age", max_cloud_age_, max_cloud_age_);
             pnh_.param("max_pitch", max_pitch_, max_pitch_);
             pnh_.param("max_roll", max_roll_, max_roll_);
+
             pnh_.param("neighborhood_knn", neighborhood_knn_, neighborhood_knn_);
             pnh_.param("neighborhood_radius", neighborhood_radius_, neighborhood_radius_);
             pnh_.param("max_nn_height_diff", max_nn_height_diff_, max_nn_height_diff_);
             pnh_.param("viewpoints_update_freq", viewpoints_update_freq_, viewpoints_update_freq_);
+            pnh_.param("min_vp_distance", min_vp_distance_, min_vp_distance_);
+            pnh_.param("max_vp_distance", max_vp_distance_, max_vp_distance_);
 
             if (std::find(robot_frames_.begin(), robot_frames_.end(), robot_frame_) == robot_frames_.end())
             {
@@ -630,7 +642,6 @@ namespace naex
                 return;
             }
             path.poses.reserve(path.poses.size() + path_indices.size());
-//            Vertex prev = path_indices[0];
             for (const auto& v: path_indices)
             {
                 geometry_msgs::PoseStamped pose;
@@ -638,18 +649,14 @@ namespace naex
                 pose.pose.position.y = points[v][1];
                 pose.pose.position.z = points[v][2];
                 pose.pose.orientation.w = 1.;
-//                if (prev != v)
                 if (!path.poses.empty())
                 {
-                    // Vec3 x = (Vec3Map(points[v]) - Vec3Map(points[prev])).normalized();
-                    // const Vec3Map z(normals[prev]);
                     Vec3 x(pose.pose.position.x - path.poses.back().pose.position.x,
                             pose.pose.position.y - path.poses.back().pose.position.y,
                             pose.pose.position.z - path.poses.back().pose.position.z);
                     x.normalize();
                     const Vec3Map z(normals[v]);
                     Mat3 m;
-//                    m << x, z.cross(x), z;
 //                    m.row(0) = x;
 //                    m.row(1) = z.cross(x);
 //                    m.row(2) = z;
@@ -663,13 +670,8 @@ namespace naex
                     pose.pose.orientation.z = q.z();
                     pose.pose.orientation.w = q.w();
                 }
-//                prev = v;
                 path.poses.push_back(pose);
             }
-//            if (path_indices.size() >= 2)
-//            {
-//                path.poses[0].pose.orientation = path.poses[1].pose.orientation;
-//            }
         }
 
         void plan(const sensor_msgs::PointCloud2& cloud, const geometry_msgs::PoseStamped& start)
@@ -699,11 +701,10 @@ namespace naex
             g.build_index();
             g.compute_graph(neighborhood_knn_, neighborhood_radius_);
 
+            // Adjust points labels using constructed NN graph.
             g.compute_final_labels(max_nn_height_diff_);
             fill_field("final_label", g.labels_.begin(), debug_cloud);
             final_label_cloud_pub_.publish(debug_cloud);
-
-            // TODO: Adjust traversability labels using local neighborhood.
 
             // Use the nearest point to robot as the starting point.
             Vec3 start_position(start.pose.position.x, start.pose.position.y, start.pose.position.z);
@@ -754,9 +755,7 @@ namespace naex
 //                }
                 flann::Index<flann::L2_3D<Elem>> vp_index(vp, flann::KDTreeIndexParams(2));
                 vp_index.buildIndex();
-//                ROS_INFO("VP index built");
                 Query<Elem> vp_query(vp_index, g.points_, 1);
-//                ROS_INFO("Query computed.");
                 utility = vp_query.dist_buf_;
                 ROS_INFO("Vertex utility (%u pts, %lu vp): %.3f s.", g.num_vertices(), n_vp, t.seconds_elapsed());
             }
@@ -764,44 +763,38 @@ namespace naex
             for (auto it = utility.begin(); it != utility.end(); ++it, ++i)
             {
                 // Multiply the (clipped) Euclidean distance to encourage exploration.
-                *it = 3.f * std::min(std::max(std::sqrt(*it) - 2.f * neighborhood_radius_, 0.f), 5.f);
-//                *it = 1.f / std::min(std::max(std::sqrt(*it) - 2.f * neighborhood_radius_, 1.f), 5.f);
+//                *it = 3.f * std::min(std::max(std::sqrt(*it) - 2.f * neighborhood_radius_, 0.f), 5.f);
+                *it = std::min(std::max(std::sqrt(*it) - min_vp_distance_, 0.f), max_vp_distance_) / max_vp_distance_;
                 // Prefer frontiers in a specific subspace (e.g. positive x).
                 // TODO: Ensure frame subt is used here.
-                *it += 3.f * std::min(points[i][0] - 10.f, 0.f);
-//                *it /= (1.f - std::min(points[i][0] - 10.f, 0.f));
+//                *it += 3.f * std::min(points[i][0] - 10.f, 0.f);
+                *it /= std::max(-points[i][0] + 9.f, 1.f);
             }
             fill_field("utility", utility.begin(), debug_cloud);
             utility_cloud_pub_.publish(debug_cloud);
 
+            // Publish final cost cloud.
+            Buffer<Elem> final_costs(path_costs.size());
             Elem goal_cost = std::numeric_limits<Elem>::infinity();
             Vertex v_goal = v_start;
-            auto it_path_cost = path_costs.begin(), it_utility = utility.begin();
-            for (Vertex v = 0; v < g.num_vertices(); ++v, ++it_path_cost, ++it_utility)
+            Vertex v = 0;
+            auto it_path_cost = path_costs.begin();
+            auto it_utility = utility.begin();
+            auto it_final_cost = final_costs.begin();
+            for (; it_path_cost != path_costs.end(); ++v, ++it_path_cost, ++it_utility, ++it_final_cost)
             {
-                // Subtract viewpoint distance (utility) from path cost.
-                auto v_cost = *it_path_cost - *it_utility;
-//                auto v_cost = *it_path_cost / *it_utility;
-                // TODO: Add penalty for initial rotation: + abs(angle_err) / angular_max.
-                if (v_cost < goal_cost)
+//                *it_final_cost = *it_path_cost - *it_utility;
+                *it_final_cost = std::log(*it_path_cost / (*it_utility + 1e-6f));
+                // Avoid single pose paths and paths with no utility.
+                if (*it_final_cost < goal_cost && *it_path_cost > 0. && *it_utility > 0.)
                 {
-                    goal_cost = v_cost;
+                    goal_cost = *it_final_cost;
                     v_goal = v;
                 }
             }
-            ROS_INFO("Goal position: %.1f, %.1f, %.1f.", points[v_goal][0], points[v_goal][1], points[v_goal][2]);
-
-            // Publish final cost cloud.
-            Buffer<Elem> final_costs(path_costs.size());
-            {
-                auto it_path_cost = path_costs.begin();
-                auto it_utility = utility.begin();
-                auto it_final_cost = final_costs.begin();
-                for (; it_path_cost != path_costs.end(); ++it_path_cost, ++it_utility, ++it_final_cost)
-                {
-                    *it_final_cost = *it_path_cost - *it_utility;
-                }
-            }
+            ROS_INFO("Goal position: %.1f, %.1f, %.1f m: cost %.3g, utility %.3g, final cost %.3g.",
+                    points[v_goal][0], points[v_goal][1], points[v_goal][2],
+                    path_costs[v_goal], utility[v_goal], final_costs[v_goal]);
             fill_field("final_cost", final_costs.begin(), debug_cloud);
             final_cost_cloud_pub_.publish(debug_cloud);
 
@@ -810,14 +803,12 @@ namespace naex
             std::vector<Vertex> path_indices;
             trace_path_indices(v_start, v_goal, predecessor, path_indices);
 
-
             nav_msgs::Path path;
             path.header.frame_id = cloud.header.frame_id;
             path.header.stamp = ros::Time::now();
             path.poses.push_back(start);
             append_path(path_indices, points, normals, path);
             path_pub_.publish(path);
-//            ROS_INFO("Path published.");
             ROS_INFO("Path length: %lu.", path.poses.size());
         }
 
@@ -921,6 +912,8 @@ namespace naex
         float viewpoints_update_freq_;
         ros::Timer viewpoints_update_timer_;
         std::vector<Elem> viewpoints_;  // 3xN
+        float min_vp_distance_;
+        float max_vp_distance_;
 
         int queue_size_;
     };
