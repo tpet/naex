@@ -143,6 +143,7 @@ namespace naex
                 dist_(dist_buf_.begin(), queries.rows, k)
         {
             flann::SearchParams params;
+            params.cores = 4;
             index.knnSearch(queries, nn_, dist_, k, params);
         }
         Buffer<int> nn_buf_;
@@ -314,6 +315,7 @@ namespace naex
             t.reset();
             flann::SearchParams params;
             params.checks = 64;
+            params.cores = 4;
 //            params.max_neighbors = k;
 //            points_index_.radiusSearch(points_, nn_, dist_, radius, params);
             points_index_.knnSearch(points_, nn_, dist_, k, params);

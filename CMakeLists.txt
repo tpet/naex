@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.9)
 project(naex)
 
 add_compile_options(-std=c++11)
@@ -6,6 +6,8 @@ add_compile_options(-std=c++11)
 find_package(Boost COMPONENTS graph REQUIRED)
 
 find_package(Eigen3 REQUIRED NO_MODULE)
+
+find_package(OpenMP REQUIRED)
 
 find_package(PkgConfig)
 pkg_check_modules(Flann REQUIRED)
@@ -39,13 +41,20 @@ catkin_package(
 add_executable(follower src/follower_node.cpp)
 target_link_libraries(follower ${catkin_LIBRARIES})
 
+# https://stackoverflow.com/a/51448364/3456661
 add_executable(planner src/planner_node.cpp)
-target_link_libraries(planner ${catkin_LIBRARIES} Eigen3::Eigen ${Flann_LIBRARY} lz4)
+target_link_libraries(planner PRIVATE ${catkin_LIBRARIES} Eigen3::Eigen ${Flann_LIBRARY} lz4 OpenMP::OpenMP_CXX)
 
 install(
     TARGETS
         follower
         planner
+    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(
+    PROGRAMS
+        scripts/path_follower
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
