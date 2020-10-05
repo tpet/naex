@@ -565,9 +565,18 @@ namespace naex
             pnh_.param("min_vp_distance", min_vp_distance_, min_vp_distance_);
             pnh_.param("max_vp_distance", max_vp_distance_, max_vp_distance_);
 
-            if (std::find(robot_frames_.begin(), robot_frames_.end(), robot_frame_) == robot_frames_.end())
+            bool among_robots = false;
+            for (const auto& kv: robot_frames_)
             {
-                robot_frames_.push_back(robot_frame_);
+                if (kv.second == robot_frame_)
+                {
+                    among_robots = true;
+                }
+            }
+            if (!among_robots)
+            {
+                ROS_INFO("Inserting my robot frame among all robot frames.");
+                robot_frames_["SELF"] = robot_frame_;
             }
 
             viewpoints_.reserve(size_t(7200. * viewpoints_update_freq_) * 3 * robot_frames_.size());
@@ -599,8 +608,9 @@ namespace naex
                 ROS_ERROR("Could not gather robot positions due to missing map frame.");
                 return;
             }
-            for (const auto& frame: robot_frames_)
+            for (const auto& kv: robot_frames_)
             {
+                const auto& frame = kv.second;
                 try
                 {
                     // Get last transform available (don't wait).
@@ -899,7 +909,7 @@ namespace naex
 
         std::string map_frame_;
         std::string robot_frame_;
-        std::vector<std::string> robot_frames_;
+        std::map<std::string, std::string> robot_frames_;
         float max_cloud_age_;
         float max_pitch_;
         float max_roll_;
