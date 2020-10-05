@@ -25,6 +25,11 @@ public:
             size_(0)
     {}
 
+    Buffer(const Buffer<T>& other):
+            begin_(other.begin_),
+            size_(other.size_)
+    {}
+
     Buffer(std::shared_ptr<T> other):
             begin_(other),
             size_(1)

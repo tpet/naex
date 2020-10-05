@@ -1,0 +1,239 @@
+#!/usr/bin/env python
+"""
+Simple path follower.
+
+Always acts on the last received plan.
+An empty plan means no action (stopping the robot).
+"""
+from __future__ import absolute_import, division, print_function
+# from exploration.msg import Path
+from geometry_msgs.msg import Pose, PoseStamped, Pose2D, Quaternion, Transform, TransformStamped, Twist
+from nav_msgs.msg import Path
+import numpy as np
+import rospy
+from ros_numpy import msgify, numpify
+from scipy.spatial import cKDTree
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from tf2_py import TransformException
+import tf2_ros
+from threading import RLock
+from timeit import default_timer as timer
+
+np.set_printoptions(precision=3)
+
+
+def slots(msg):
+    """Return message attributes (slots) as list."""
+    return [getattr(msg, var) for var in msg.__slots__]
+
+
+def tf3to2(tf):
+    pose2 = Pose2D()
+    pose2.x = tf.translation.x
+    pose2.y = tf.translation.y
+    rpy = euler_from_quaternion(slots(tf.rotation))
+    pose2.theta = rpy[2]
+    return pose2
+
+
+def tf_to_pose(tf):
+    # tf = Transform()
+    pose = Pose()
+    pose.position.x = tf.translation.x
+    pose.position.y = tf.translation.y
+    pose.position.z = tf.translation.z
+    pose.orientation = tf.rotation
+    return pose
+
+
+def tf_to_pose_stamped(tf):
+    tf = TransformStamped()
+    pose = PoseStamped()
+    pose.header = tf.header
+    pose.pose = tf_to_pose(tf.transform)
+    return pose
+
+
+def p2e(xh):
+    x = xh[:-1, :]
+    return x
+
+
+def e2p(x):
+    xh = np.concatenate((x, np.ones((1, x.shape[1]))))
+    return xh
+
+
+class PathFollower(object):
+    def __init__(self):
+        self.map_frame = rospy.get_param('~map_frame', 'map')
+        self.odom_frame = rospy.get_param('~odom_frame', 'odom')            # No-wait frame
+        self.robot_frame = rospy.get_param('~robot_frame', 'base_footprint')
+        self.control_freq = rospy.get_param('~control_freq', 10.0)
+        assert 1.0 < self.control_freq < 25.0
+        self.goal_reached_dist = rospy.get_param('~goal_reached_dist', 0.2)
+        self.goal_reached_angle = rospy.get_param('~goal_reached_angle', 0.2)
+        self.use_path_theta = rospy.get_param('~use_path_theta', 'last')
+        assert self.use_path_theta in ('none', 'last', 'all')
+        self.max_age = rospy.get_param('~max_age', 1.0)
+        self.max_path_dist = rospy.get_param('~max_path_dist', 0.5)
+        self.look_ahead = rospy.get_param('~look_ahead', 1)
+        self.max_speed = rospy.get_param('~max_speed', 0.2)          # m/s
+        self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)   # rad/s
+        self.keep_path = rospy.get_param('~keep_path', 30.0)
+
+        self.lock = RLock()
+        self.path_msg = None  # Path message
+        self.path = None  # n-by-3 path array
+        self.path_x_index = None  # Path position index of path[:, :2]
+
+        self.cmd_pub = rospy.Publisher('cmd_vel', Twist, queue_size=2)
+
+        self.tf = tf2_ros.Buffer()
+        self.tf_sub = tf2_ros.TransformListener(self.tf)
+
+        self.path_pub = rospy.Publisher('control_path', Path, queue_size=2)
+        self.path_sub = rospy.Subscriber('path', Path, self.path_received, queue_size=2)
+        self.timer = rospy.Timer(rospy.Duration(1. / self.control_freq), self.control)
+
+    def lookup_transform(self, target_frame, source_frame, time,
+                         no_wait_frame=None, timeout=0.0):
+        if no_wait_frame is None or no_wait_frame == target_frame:
+            return self.tf.lookup_transform(target_frame, source_frame, time, timeout=rospy.Duration(timeout))
+
+        tf_n2t = self.tf.lookup_transform(self.map_frame, self.odom_frame, rospy.Time())
+        tf_s2n = self.tf.lookup_transform(self.odom_frame, self.robot_frame, time, timeout=rospy.Duration(timeout))
+        tf_s2t = TransformStamped()
+        tf_s2t.header.frame_id = target_frame
+        tf_s2t.header.stamp = time
+        tf_s2t.child_frame_id = source_frame
+        tf_s2t.transform = msgify(Transform,
+                                  np.matmul(numpify(tf_n2t.transform),
+                                            numpify(tf_s2n.transform)))
+        return tf_s2t
+
+    def get_robot_pose(self, target_frame):
+        tf = self.lookup_transform(target_frame, self.robot_frame, rospy.Time.now(),
+                                   timeout=0.5, no_wait_frame=self.odom_frame)
+        pose = tf_to_pose(tf.transform)
+        return pose
+
+    def clear_path(self):
+        self.path_msg = None
+        self.path = None
+        self.path_x_index = None
+
+    def path_received(self, msg):
+        assert(isinstance(msg, Path))
+
+        age = (rospy.Time.now() - msg.header.stamp).to_sec()
+        if age > self.max_age:
+            rospy.logwarn('Discarding path %.1f s > %.1f s old.', age, self.max_age)
+            return
+
+        with self.lock:
+            if self.path_msg:
+                age = (rospy.Time.now() - self.path_msg.header.stamp).to_sec()
+                if age <= self.keep_path:
+                    rospy.loginfo('Keeping previous path (%.1f s <= %.1f s).', age, self.keep_path)
+                    return
+            if len(msg.poses) > 0:
+                self.path_msg = msg
+                self.path = np.array([slots(p.pose.position) for p in msg.poses])
+                self.path_x_index = cKDTree(self.path)
+                self.path_pub.publish(msg)
+                rospy.loginfo('Path received (%i poses).', len(msg.poses))
+            else:
+                self.clear_path()
+                rospy.loginfo('Path cleared.', len(msg.poses))
+
+    def control(self, event):
+        try:
+            t = timer()
+            with self.lock:
+                if self.path_msg is None:
+                    self.cmd_pub.publish(Twist())
+                    return
+
+                pose_msg = self.get_robot_pose(self.path_msg.header.frame_id)
+                pose = numpify(pose_msg)
+
+                _, i = self.path_x_index.query(pose[:3, 3:].T)
+                last = len(self.path_msg.poses) - 1
+                # TODO: Use distance-based lookahead.
+                # goal = self.path[min(i + self.look_ahead, last), :].T
+                goal = self.path[i, :].T
+                look_ahead = 0.
+                # max look ahead
+                # while i < last:
+                #     i += 1
+                #     new_goal = self.path[i, :].T
+                #     look_ahead += np.linalg.norm(new_goal - goal)
+                #     if look_ahead <= self.look_ahead:
+                #         goal = new_goal
+                #     else:
+                #         break
+                # min look ahead
+                while i < last and look_ahead < self.look_ahead:
+                    i += 1
+                    new_goal = self.path[i, :].T
+                    look_ahead += np.linalg.norm(new_goal - goal)
+                    goal = new_goal
+
+                # Convert the goal into robot frame.
+                local_goal = p2e(np.linalg.solve(pose, e2p(goal)))
+                rospy.logdebug('Local goal: %.2f, %.2f, %.2f', *local_goal.ravel().tolist())
+                rospy.loginfo_throttle(1.0, 'Local goal: %.2f, %.2f, %.2f', *local_goal.ravel().tolist())
+                dist = np.linalg.norm(local_goal)
+
+                # TODO: Use goal theta.
+                # Angular displacement from [-pi, pi)
+                if (True or self.use_path_theta == 'none'
+                        or (self.use_path_theta == 'last' and i < last)
+                        or np.isnan(goal[2])):
+                    angle = np.arctan2(local_goal[1], local_goal[0])
+                else:
+                    goal_theta = goal[2]
+                    rospy.loginfo('Using path theta: %.1f.', goal_theta)
+
+                # Clear path and stop if the goal has been reached.
+                if (i == last
+                        and dist <= self.goal_reached_dist
+                        and abs(angle) <= self.goal_reached_angle):
+                    rospy.loginfo('Goal reached: %.2f m from robot (<= %.2f m).',
+                                  dist, self.goal_reached_dist)
+                    self.clear_path()
+                    self.cmd_pub.publish(Twist())
+                    return
+
+                # Clear path and stop if the path is too far.
+                if dist > self.max_path_dist:
+                    rospy.logwarn('Distance to path %.2f m too high (> %.2f m).',
+                                  dist, self.max_path_dist)
+                    self.clear_path()
+                    self.cmd_pub.publish(Twist())
+                    return
+
+            # Angular rate
+            p_angle = 1.5
+            angular_rate = np.clip(p_angle * angle, -self.max_angular_rate, self.max_angular_rate)
+
+            # Linear velocity
+            p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
+            speed = np.clip(p_dist * dist, 0., self.max_speed)
+
+            msg = Twist()
+            msg.angular.z = angular_rate
+            msg.linear.x = speed
+            self.cmd_pub.publish(msg)
+            rospy.logdebug('Speed: %.2f m/s, angular rate: %.1f rad/s. (%.3f s)',
+                           speed, angular_rate, timer() - t)
+
+        except TransformException as ex:
+            rospy.logerr('Robot pose lookup failed: %s.', ex)
+
+
+if __name__ == '__main__':
+    rospy.init_node('path_follower', log_level=rospy.INFO)
+    node = PathFollower()
+    rospy.spin()
