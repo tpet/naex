@@ -158,12 +158,12 @@ class PathFollower(object):
                 pose_msg = self.get_robot_pose(self.path_msg.header.frame_id)
                 pose = numpify(pose_msg)
 
-                _, i = self.path_x_index.query(pose[:3, 3:].T)
+                look_ahead, i = self.path_x_index.query(pose[:3, 3:].T)
                 last = len(self.path_msg.poses) - 1
                 # TODO: Use distance-based lookahead.
                 # goal = self.path[min(i + self.look_ahead, last), :].T
                 goal = self.path[i, :].T
-                look_ahead = 0.
+                # look_ahead = 0.
                 # max look ahead
                 # while i < last:
                 #     i += 1

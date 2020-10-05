@@ -248,6 +248,55 @@ namespace naex
                     normals_.rows, n_traverable, n_obstacle, n_unknown, t.seconds_elapsed());
         }
 
+        /** Traversability based on NN graph. */
+        void compute_final_labels(float max_nn_height_diff)
+        {
+            Timer t;
+            // Maximum slope allowed in some direction.
+            size_t n_traverable = 0, n_adjusted = 0;
+//            ROS_INFO("NN rows: %lu, cols %lu", nn_.rows, nn_.cols);
+            for (Vertex v0 = 0; v0 < nn_.rows; ++v0)
+            {
+                // Adjust only traversable points.
+                if (labels_[v0] != TRAVERSABLE)
+                {
+                    continue;
+                }
+                ++n_traverable;
+                Elem min_height_diff = std::numeric_limits<Elem>::infinity();
+                Elem max_height_diff = -std::numeric_limits<Elem>::infinity();
+                for (size_t j = 0; j < nn_.cols; ++j)
+                {
+                    const auto v1 = nn_[v0][j];
+                    Elem height_diff = Vec3Map(normals_[v0]).dot(Vec3Map(points_[v1]) - Vec3Map(points_[v0]));
+                    if (height_diff < min_height_diff)
+                    {
+                        min_height_diff = height_diff;
+                    }
+                    if (height_diff > max_height_diff)
+                    {
+                        max_height_diff = height_diff;
+                    }
+                    Vec3 ground_pt = Vec3Map(points_[v1]) - height_diff * Vec3Map(normals_[v0]);
+                    Elem ground_dist = (ground_pt - Vec3Map(points_[v0])).norm();
+//                    ROS_INFO("height diff.: %.2f m, ground dist.: %.2f m", height_diff, ground_dist);
+                    if (ground_dist > radius_)
+                    {
+                        continue;
+                    }
+//                    if (std::abs(height_diff) > max_nn_height_diff)
+                    if (max_height_diff - min_height_diff > max_nn_height_diff)
+                    {
+                        labels_[v0] = UNKNOWN;
+                        ++n_adjusted;
+                        break;
+                    }
+                }
+            }
+            ROS_INFO("Final graph-adjusted labels (%lu pts): %lu - %lu = %lu trav. (%.3f s).",
+                    normals_.rows, n_traverable, n_adjusted, n_traverable - n_adjusted, t.seconds_elapsed());
+        }
+
         void build_index()
         {
             Timer t;
@@ -264,7 +313,7 @@ namespace naex
             nn_ = flann::Matrix<int>(nn_buf_.begin(), num_vertices(), k);
             t.reset();
             flann::SearchParams params;
-//            params.checks = 64;
+            params.checks = 64;
 //            params.max_neighbors = k;
 //            points_index_.radiusSearch(points_, nn_, dist_, radius, params);
             points_index_.knnSearch(points_, nn_, dist_, k, params);
@@ -312,7 +361,8 @@ namespace naex
             const auto v0 = source(e);
             const auto v1_index = target_index(e);
             const auto v1 = target(e);
-            if (labels_[v0] != TRAVERSABLE || labels_[v1] != TRAVERSABLE)
+//            if (labels_[v0] != TRAVERSABLE || labels_[v1] != TRAVERSABLE)
+            if (labels_[v1] != TRAVERSABLE)
             {
                 return std::numeric_limits<Cost>::infinity();
             }
@@ -478,6 +528,7 @@ namespace naex
                 max_roll_(30. / 180. * M_PI),
                 neighborhood_knn_(12),
                 neighborhood_radius_(.5),
+                max_nn_height_diff_(0.15),
                 viewpoints_update_freq_(1.),
                 viewpoints_(),
                 queue_size_(5.)
@@ -497,6 +548,7 @@ namespace naex
             pnh_.param("max_roll", max_roll_, max_roll_);
             pnh_.param("neighborhood_knn", neighborhood_knn_, neighborhood_knn_);
             pnh_.param("neighborhood_radius", neighborhood_radius_, neighborhood_radius_);
+            pnh_.param("max_nn_height_diff", max_nn_height_diff_, max_nn_height_diff_);
             pnh_.param("viewpoints_update_freq", viewpoints_update_freq_, viewpoints_update_freq_);
 
             if (std::find(robot_frames_.begin(), robot_frames_.end(), robot_frame_) == robot_frames_.end())
@@ -506,13 +558,16 @@ namespace naex
 
             viewpoints_.reserve(size_t(7200. * viewpoints_update_freq_) * 3 * robot_frames_.size());
 
-            tf_ = std::make_unique<tf2_ros::Buffer>(ros::Duration(10.));
-            tf_sub_ = std::make_unique<tf2_ros::TransformListener>(*tf_);
+            // C++14
+//            tf_ = std::make_unique<tf2_ros::Buffer>(ros::Duration(10.));
+//            tf_sub_ = std::make_unique<tf2_ros::TransformListener>(*tf_);
+            tf_.reset(new tf2_ros::Buffer(ros::Duration(10.)));
+            tf_sub_.reset(new tf2_ros::TransformListener(*tf_));
             viewpoints_update_timer_ =  nh_.createTimer(ros::Rate(viewpoints_update_freq_),
                     &Planner::gather_viewpoints, this);
 
             normal_label_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("normal_label_cloud", 5);
-            adjusted_label_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("adjusted_label_cloud", 5);
+            final_label_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("final_label_cloud", 5);
             path_cost_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("path_cost_cloud", 5);
             utility_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("utility_cloud", 5);
             final_cost_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("final_cost_cloud", 5);
@@ -642,21 +697,13 @@ namespace naex
             g.build_index();
             g.compute_graph(neighborhood_knn_, neighborhood_radius_);
 
+            g.compute_final_labels(max_nn_height_diff_);
+            fill_field("final_label", g.labels_.begin(), debug_cloud);
+            final_label_cloud_pub_.publish(debug_cloud);
+
             // TODO: Adjust traversability labels using local neighborhood.
 
-            // TODO: Use nn to robot position as the starting point.
-//            geometry_msgs::PoseStamped robot_pose;
-//            try
-//            {
-//                const auto tf = tf_->lookupTransform(map_frame_, robot_frame_, ros::Time::now(), ros::Duration(1.));
-//                transform_to_pose(tf, robot_pose);
-//            }
-//            catch (const tf2::TransformException& ex)
-//            {
-//                ROS_ERROR("Could not get %s starting position: %s.", robot_frame_.c_str(), ex.what());
-//                return;
-//            }
-//            Vec3 robot_pos(robot_pose.pose.position.x, robot_pose.pose.position.y, robot_pose.pose.position.z);
+            // Use the nearest point to robot as the starting point.
             Vec3 start_position(start.pose.position.x, start.pose.position.y, start.pose.position.z);
             Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), 1);
             Vertex v_start = start_query.nn_buf_[0];
@@ -668,7 +715,7 @@ namespace naex
             boost::typed_identity_property_map<Vertex> index_map;
 
             Timer t;
-            std::cout << "DIJKSTRA" << std::endl;
+//            std::cout << "DIJKSTRA" << std::endl;
             // boost::dijkstra_shortest_paths(g, ::Graph::V(0),
             boost::dijkstra_shortest_paths_no_color_map(g, v_start,
 //                    &predecessor[0], &path_costs[0], edge_costs,
@@ -711,10 +758,16 @@ namespace naex
                 utility = vp_query.dist_buf_;
                 ROS_INFO("Vertex utility (%u pts, %lu vp): %.3f s.", g.num_vertices(), n_vp, t.seconds_elapsed());
             }
-            for (auto it = utility.begin(); it != utility.end(); ++it)
+            size_t i = 0;
+            for (auto it = utility.begin(); it != utility.end(); ++it, ++i)
             {
                 // Multiply the (clipped) Euclidean distance to encourage exploration.
-                *it = 3. * std::min(std::max(std::sqrt(*it) - 1.f, 0.f), 10.f);
+                *it = 3.f * std::min(std::max(std::sqrt(*it) - 2.f * neighborhood_radius_, 0.f), 5.f);
+//                *it = 1.f / std::min(std::max(std::sqrt(*it) - 2.f * neighborhood_radius_, 1.f), 5.f);
+                // Prefer frontiers in a specific subspace (e.g. positive x).
+                // TODO: Ensure frame subt is used here.
+                *it += 3.f * std::min(points[i][0] - 10.f, 0.f);
+//                *it /= (1.f - std::min(points[i][0] - 10.f, 0.f));
             }
             fill_field("utility", utility.begin(), debug_cloud);
             utility_cloud_pub_.publish(debug_cloud);
@@ -726,8 +779,8 @@ namespace naex
             {
                 // Subtract viewpoint distance (utility) from path cost.
                 auto v_cost = *it_path_cost - *it_utility;
+//                auto v_cost = *it_path_cost / *it_utility;
                 // TODO: Add penalty for initial rotation: + abs(angle_err) / angular_max.
-                // TODO: Prefer frontiers in a specific subspace.
                 if (v_cost < goal_cost)
                 {
                     goal_cost = v_cost;
@@ -840,7 +893,7 @@ namespace naex
         std::unique_ptr<tf2_ros::Buffer> tf_;
         std::unique_ptr<tf2_ros::TransformListener> tf_sub_;
         ros::Publisher normal_label_cloud_pub_;
-        ros::Publisher adjusted_label_cloud_pub_;
+        ros::Publisher final_label_cloud_pub_;
         ros::Publisher path_cost_cloud_pub_;
         ros::Publisher utility_cloud_pub_;
         ros::Publisher final_cost_cloud_pub_;
@@ -860,6 +913,7 @@ namespace naex
 
         int neighborhood_knn_;
         float neighborhood_radius_;
+        float max_nn_height_diff_;
 
         std::recursive_mutex viewpoints_mutex_;
         float viewpoints_update_freq_;
