@@ -13,11 +13,11 @@ import numpy as np
 import rospy
 from ros_numpy import msgify, numpify
 from scipy.spatial import cKDTree
-from tf.transformations import euler_from_quaternion, quaternion_from_euler
-from tf2_py import TransformException
+from sensor_msgs.msg import PointCloud2
 import tf2_ros
 from threading import RLock
 from timeit import default_timer as timer
+from visualization_msgs.msg import Marker, MarkerArray
 
 np.set_printoptions(precision=3)
 
@@ -25,15 +25,6 @@ np.set_printoptions(precision=3)
 def slots(msg):
     """Return message attributes (slots) as list."""
     return [getattr(msg, var) for var in msg.__slots__]
-
-
-def tf3to2(tf):
-    pose2 = Pose2D()
-    pose2.x = tf.translation.x
-    pose2.y = tf.translation.y
-    rpy = euler_from_quaternion(slots(tf.rotation))
-    pose2.theta = rpy[2]
-    return pose2
 
 
 def tf_to_pose(tf):
@@ -85,11 +76,27 @@ class PathFollower(object):
         self.max_speed = rospy.get_param('~max_speed', 0.2)          # m/s
         self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)   # rad/s
         self.keep_path = rospy.get_param('~keep_path', 30.0)
+        # Obstacle avoidance
+        robot_extents = rospy.get_param('~robot_extents', [[-0.6, 0.6],
+                                                           [-0.5, 0.5],
+                                                           [ 0.0, 0.8]])
+        self.robot_extents = np.array(robot_extents)
+        # Keep only the inside of the box for further processing.
+        keep_cloud_box = rospy.get_param('~keep_cloud_box', [[-4.0, 4.0],
+                                                             [-4.0, 4.0],
+                                                             [-4.0, 4.0]])
+        self.keep_cloud_box = np.array(keep_cloud_box)
+        self.min_points_obstacle = rospy.get_param('~min_points_obstacle', 1)
 
-        self.lock = RLock()
+        self.path_lock = RLock()
         self.path_msg = None  # Path message
-        self.path = None  # n-by-3 path array
-        self.path_x_index = None  # Path position index of path[:, :2]
+        self.path = None  # n-by-3 path position array
+        self.path_x_index = None  # Index of above
+
+        self.cloud_lock = RLock()
+        self.cloud_msg = None
+        self.cloud = None  # n-by-3 cloud position array
+        self.cloud_x_index = None  # Index of above
 
         self.cmd_pub = rospy.Publisher('cmd_vel', Twist, queue_size=2)
 
@@ -97,16 +104,30 @@ class PathFollower(object):
         self.tf_sub = tf2_ros.TransformListener(self.tf)
 
         self.path_pub = rospy.Publisher('control_path', Path, queue_size=2)
+        self.clearance_pub = rospy.Publisher('clearance', MarkerArray, queue_size=2)
         self.path_sub = rospy.Subscriber('path', Path, self.path_received, queue_size=2)
+        self.cloud_sub = rospy.Subscriber('cloud', PointCloud2, self.cloud_received, queue_size=2)
         self.timer = rospy.Timer(rospy.Duration(1. / self.control_freq), self.control)
 
     def lookup_transform(self, target_frame, source_frame, time,
                          no_wait_frame=None, timeout=0.0):
-        if no_wait_frame is None or no_wait_frame == target_frame:
-            return self.tf.lookup_transform(target_frame, source_frame, time, timeout=rospy.Duration(timeout))
 
-        tf_n2t = self.tf.lookup_transform(self.map_frame, self.odom_frame, rospy.Time())
-        tf_s2n = self.tf.lookup_transform(self.odom_frame, self.robot_frame, time, timeout=rospy.Duration(timeout))
+        timeout = rospy.Duration.from_sec(timeout)
+        if no_wait_frame is None or no_wait_frame == target_frame:
+            tf_s2t = self.tf.lookup_transform(target_frame, source_frame, time, timeout=timeout)
+            return tf_s2t
+
+        # Try to get exact transform from no-wait frame to target if available.
+        # If not, use most recent transform.
+        dont_wait = rospy.Duration.from_sec(0.0)
+        try:
+            tf_n2t = self.tf.lookup_transform(target_frame, self.odom_frame, time, timeout=dont_wait)
+        except tf2_ros.TransformException as ex:
+            tf_n2t = self.tf.lookup_transform(target_frame, self.odom_frame, rospy.Time(0))
+
+        # Get the exact transform from source to no-wait frame.
+        tf_s2n = self.tf.lookup_transform(self.odom_frame, source_frame, time, timeout=timeout)
+
         tf_s2t = TransformStamped()
         tf_s2t.header.frame_id = target_frame
         tf_s2t.header.stamp = time
@@ -123,38 +144,159 @@ class PathFollower(object):
         return pose
 
     def clear_path(self):
-        self.path_msg = None
-        self.path = None
-        self.path_x_index = None
+        with self.path_lock:
+            self.path_msg = None
+            self.path = None
+            self.path_x_index = None
 
     def path_received(self, msg):
-        assert(isinstance(msg, Path))
+        assert isinstance(msg, Path)
 
+        if not msg.header.frame_id:
+            rospy.logwarn_once('Map frame %s will be used instead of empty path frame.',
+                               self.map_frame)
+            msg.header.frame_id = self.map_frame
+        # elif not self.map_frame:
+        #     self.map_frame = msg.header.frame_id
+        elif self.map_frame and msg.header.frame_id != self.map_frame:
+            rospy.logwarn_once('Map frame %s differs from path frame %s.',
+                               self.map_frame, msg.header.frame_id)
+
+        # Discard old messages.
         age = (rospy.Time.now() - msg.header.stamp).to_sec()
         if age > self.max_age:
             rospy.logwarn('Discarding path %.1f s > %.1f s old.', age, self.max_age)
             return
 
-        with self.lock:
-            if self.path_msg:
+        # Allow to stop the controller with an empty path.
+        if not msg.poses:
+            self.clear_path()
+            rospy.loginfo('Path cleared.', len(msg.poses))
+            return
+
+        # Keep a recent path if keep_path is positive.
+        with self.path_lock:
+            if self.path_msg and self.keep_path > 0.:
                 age = (rospy.Time.now() - self.path_msg.header.stamp).to_sec()
                 if age <= self.keep_path:
                     rospy.loginfo('Keeping previous path (%.1f s <= %.1f s).', age, self.keep_path)
                     return
-            if len(msg.poses) > 0:
-                self.path_msg = msg
-                self.path = np.array([slots(p.pose.position) for p in msg.poses])
-                self.path_x_index = cKDTree(self.path)
-                self.path_pub.publish(msg)
-                rospy.loginfo('Path received (%i poses).', len(msg.poses))
+
+        # Update path and index.
+        path = np.array([slots(p.pose.position) for p in msg.poses])
+        path_x_index = cKDTree(path)
+        with self.path_lock:
+            self.path_msg = msg
+            self.path = path
+            self.path_x_index = path_x_index
+            self.path_pub.publish(msg)
+            rospy.loginfo('Path received (%i poses).', len(msg.poses))
+
+    def cloud_received(self, msg):
+        assert isinstance(msg, PointCloud2)
+
+        age = (rospy.Time.now() - msg.header.stamp).to_sec()
+        if age > self.max_age:
+            rospy.logwarn('Discarding cloud %.1f s > %.1f s old.', age, self.max_age)
+            return
+
+        path_frame = None
+        with self.path_lock:
+            if self.path_msg:
+                path_frame = self.path_msg.header.frame_id
+        if not path_frame:
+            path_frame = self.map_frame
+        if not path_frame:
+            rospy.loginfo('Could not obtain path frame, discarding cloud.')
+            return
+
+        t = timer()
+        cloud = numpify(msg).ravel()
+        cloud = np.stack(cloud[f] for f in ('x', 'y', 'z'))
+        keep = (self.keep_cloud_box[:, :1] <= cloud).all(axis=0) & (cloud <= self.keep_cloud_box[:, 1:]).all(axis=0)
+        cloud = cloud[:, keep]
+        if cloud.size == 0:
+            rospy.loginfo('No points left.')
+            return
+
+        try:
+            tf = self.lookup_transform(path_frame, msg.header.frame_id, msg.header.stamp,
+                                       no_wait_frame=self.odom_frame, timeout=0.5)
+        except tf2_ros.TransformException as ex:
+            rospy.logerr('Could not transform cloud from %s to path frame %s at %.1f s.',
+                         msg.header.frame_id, path_frame, msg.header.stamp.to_sec())
+            return
+        tf = numpify(tf.transform)
+        cloud = np.matmul(tf, e2p(cloud))
+        t = timer() - t
+
+        with self.cloud_lock:
+            self.cloud_msg = msg
+            self.cloud = cloud
+            rospy.loginfo('Cloud with %i points received, %i points kept (%.3f s).',
+                          msg.height * msg.width, cloud.shape[1], t)
+
+    def check_pose_clearance(self, pose):
+        # Convert cloud into given pose with odom/no-wait as fixed frame.
+        # Check robot extents.
+        with self.cloud_lock:
+            cloud = self.cloud
+        if cloud is None:
+            rospy.loginfo('No cloud to check for obstacles.')
+            return
+        tf = numpify(pose)
+        # tf = np.linalg.inv(tf)
+        tf[:3, :3] = tf[:3, :3].T
+        tf[:3, 3:] = -np.matmul(tf[:3, :3], tf[:3, 3:])
+        local_cloud = np.matmul(tf, self.cloud)
+        obstacles = ((local_cloud[:3, :] >= self.robot_extents[:, :1]).all(axis=0)
+                     & (local_cloud[:3, :] <= self.robot_extents[:, 1:]).all(axis=0))
+        return obstacles.sum() < self.min_points_obstacle
+
+    def publish_clearance(self, path_msg=None, ind=slice(None)):
+        t = timer()
+
+        msg = MarkerArray()
+        now = rospy.Time.now()
+        if not path_msg:
+            with self.path_lock:
+                path_msg = self.path_msg
+        for i, pose in enumerate(path_msg.poses[ind]):
+            marker = Marker()
+            marker.header.frame_id = path_msg.header.frame_id
+            marker.header.stamp = now
+            marker.ns = '%s/clearance' % self.robot_frame
+            marker.id = i
+            marker.action = Marker.MODIFY
+            marker.type = Marker.CUBE
+            # marker.pose = pose
+            pose_arr = numpify(pose.pose)
+            center = self.robot_extents.mean(axis=1, keepdims=True)
+            # TODO: Transpose?
+            pose_arr[:3, 3:] += np.dot(pose_arr[:3, :3], center)
+            marker.pose = msgify(Pose, pose_arr)
+            marker.scale.x, marker.scale.y, marker.scale.z \
+                = self.robot_extents[:, 1] - self.robot_extents[:, 0]
+            if self.check_pose_clearance(pose.pose):
+                marker.color.r, marker.color.g, marker.color.b, marker.color.a = 0., 1., 0., 0.25
             else:
-                self.clear_path()
-                rospy.loginfo('Path cleared.', len(msg.poses))
+                marker.color.r, marker.color.g, marker.color.b, marker.color.a = 1., 0., 0., 0.25
+            msg.markers.append(marker)
+
+        # Clean up previous clearance.
+        marker = Marker()
+        marker.ns = '%s/clearance' % self.robot_frame
+        marker.action = Marker.DELETEALL
+        self.clearance_pub.publish(MarkerArray([marker]))
+        # Send current clearance.
+        self.clearance_pub.publish(msg)
+
+        rospy.loginfo('Publish clearance: %.3f s', timer() - t)
 
     def control(self, event):
         try:
             t = timer()
-            with self.lock:
+            with self.path_lock:
                 if self.path_msg is None:
                     self.cmd_pub.publish(Twist())
                     return
@@ -163,10 +305,11 @@ class PathFollower(object):
                 pose = numpify(pose_msg)
 
                 look_ahead, i = self.path_x_index.query(pose[:3, 3:].T)
+                look_ahead, i = look_ahead.item(), i.item()
                 last = len(self.path_msg.poses) - 1
-                # TODO: Use distance-based lookahead.
+
                 # goal = self.path[min(i + self.look_ahead, last), :].T
-                goal = self.path[i, :].T
+                goal = self.path[i:i+1, :].T
                 # look_ahead = 0.
                 # max look ahead
                 # while i < last:
@@ -180,9 +323,15 @@ class PathFollower(object):
                 # min look ahead
                 while i < last and look_ahead < self.look_ahead:
                     i += 1
-                    new_goal = self.path[i, :].T
+                    new_goal = self.path[i:i+1, :].T
                     look_ahead += np.linalg.norm(new_goal - goal)
                     goal = new_goal
+
+                self.publish_clearance()
+                if not self.check_pose_clearance(self.path_msg.poses[i].pose):
+                    rospy.logwarn('Goal obstructed, waiting...')
+                    self.cmd_pub.publish(Twist())
+                    return
 
                 # Convert the goal into robot frame.
                 local_goal = p2e(np.linalg.solve(pose, e2p(goal)))
@@ -195,7 +344,7 @@ class PathFollower(object):
                 if (True or self.use_path_theta == 'none'
                         or (self.use_path_theta == 'last' and i < last)
                         or np.isnan(goal[2])):
-                    angle = np.arctan2(local_goal[1], local_goal[0])
+                    angle = np.arctan2(local_goal[1, 0], local_goal[0, 0])
                 else:
                     goal_theta = goal[2]
                     rospy.loginfo('Using path theta: %.1f.', goal_theta)
@@ -235,7 +384,7 @@ class PathFollower(object):
             rospy.logdebug('Speed: %.2f m/s, angular rate: %.1f rad/s. (%.3f s)',
                            speed, angular_rate, timer() - t)
 
-        except TransformException as ex:
+        except tf2_ros.TransformException as ex:
             rospy.logerr('Robot pose lookup failed: %s.', ex)
 
 
