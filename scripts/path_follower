@@ -76,16 +76,16 @@ class PathFollower(object):
         self.max_speed = rospy.get_param('~max_speed', 0.2)          # m/s
         self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)   # rad/s
         self.keep_path = rospy.get_param('~keep_path', 30.0)
-        # Obstacle avoidance
-        robot_extents = rospy.get_param('~robot_extents', [[-0.6, 0.6],
-                                                           [-0.5, 0.5],
-                                                           [ 0.0, 0.8]])
-        self.robot_extents = np.array(robot_extents)
-        # Keep only the inside of the box for further processing.
+        # Keep only points inside a box for clearance check.
         keep_cloud_box = rospy.get_param('~keep_cloud_box', [[-4.0, 4.0],
                                                              [-4.0, 4.0],
                                                              [-4.0, 4.0]])
         self.keep_cloud_box = np.array(keep_cloud_box)
+        clearance_box = rospy.get_param('~clearance_box', [[-0.6, 0.6],
+                                                           [-0.5, 0.5],
+                                                           [ 0.0, 0.8]])
+        self.clearance_box = np.array(clearance_box)
+        self.show_clearance = rospy.get_param('~show_clearance_pos', [-10, 10])
         self.min_points_obstacle = rospy.get_param('~min_points_obstacle', 1)
 
         self.path_lock = RLock()
@@ -249,8 +249,8 @@ class PathFollower(object):
         tf[:3, :3] = tf[:3, :3].T
         tf[:3, 3:] = -np.matmul(tf[:3, :3], tf[:3, 3:])
         local_cloud = np.matmul(tf, self.cloud)
-        obstacles = ((local_cloud[:3, :] >= self.robot_extents[:, :1]).all(axis=0)
-                     & (local_cloud[:3, :] <= self.robot_extents[:, 1:]).all(axis=0))
+        obstacles = ((local_cloud[:3, :] >= self.clearance_box[:, :1]).all(axis=0)
+                     & (local_cloud[:3, :] <= self.clearance_box[:, 1:]).all(axis=0))
         return obstacles.sum() < self.min_points_obstacle
 
     def publish_clearance(self, path_msg=None, ind=slice(None)):
@@ -271,12 +271,12 @@ class PathFollower(object):
             marker.type = Marker.CUBE
             # marker.pose = pose
             pose_arr = numpify(pose.pose)
-            center = self.robot_extents.mean(axis=1, keepdims=True)
+            center = self.clearance_box.mean(axis=1, keepdims=True)
             # TODO: Transpose?
             pose_arr[:3, 3:] += np.dot(pose_arr[:3, :3], center)
             marker.pose = msgify(Pose, pose_arr)
             marker.scale.x, marker.scale.y, marker.scale.z \
-                = self.robot_extents[:, 1] - self.robot_extents[:, 0]
+                = self.clearance_box[:, 1] - self.clearance_box[:, 0]
             if self.check_pose_clearance(pose.pose):
                 marker.color.r, marker.color.g, marker.color.b, marker.color.a = 0., 1., 0., 0.25
             else:
@@ -327,7 +327,8 @@ class PathFollower(object):
                     look_ahead += np.linalg.norm(new_goal - goal)
                     goal = new_goal
 
-                self.publish_clearance()
+                ind = slice(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
+                self.publish_clearance(self.path_msg, ind)
                 if not self.check_pose_clearance(self.path_msg.poses[i].pose):
                     rospy.logwarn('Goal obstructed, waiting...')
                     self.cmd_pub.publish(Twist())
