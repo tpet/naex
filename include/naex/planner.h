@@ -224,15 +224,12 @@ namespace naex
             size_t n_traverable = 0, n_obstacle = 0, n_unknown = 0;
             for (size_t i = 0; i < normals_.rows; ++i)
             {
-//                auto slope = std::acos(normals_[i][2]);
-//                if (slope <= max_slope)
-                if (normals_[i][2] >= min_z)
+                if (std::abs(normals_[i][2]) >= min_z)
                 {
                     // Approx. horizontal based on normal (with correct orientation).
                     labels_[i] = TRAVERSABLE;
                     ++n_traverable;
                 }
-//                else if (M_PI - slope > max_slope)
                 else if (std::abs(normals_[i][2]) < min_z)
                 {
                     // Approx. vertical based on normal (allow orientation mismatch).
@@ -241,6 +238,7 @@ namespace naex
                 }
                 else
                 {
+                    // (Currently unreachable)
                     labels_[i] = UNKNOWN;
                     ++n_unknown;
                 }
@@ -529,7 +527,7 @@ namespace naex
                 tf_(),
                 position_name_("x"),
                 normal_name_("normal_x"),
-//                map_frame_(""),
+                map_frame_(""),
                 robot_frame_("base_footprint"),
                 robot_frames_(),
                 max_cloud_age_(5.),
@@ -540,8 +538,10 @@ namespace naex
                 max_nn_height_diff_(0.15),
                 viewpoints_update_freq_(1.),
                 viewpoints_(),
+                other_viewpoints_(),
                 min_vp_distance_(1.5),
                 max_vp_distance_(5.),
+                self_factor_(0.25),
                 queue_size_(5.)
         {
             configure();
@@ -557,13 +557,13 @@ namespace naex
             pnh_.param("max_cloud_age", max_cloud_age_, max_cloud_age_);
             pnh_.param("max_pitch", max_pitch_, max_pitch_);
             pnh_.param("max_roll", max_roll_, max_roll_);
-
             pnh_.param("neighborhood_knn", neighborhood_knn_, neighborhood_knn_);
             pnh_.param("neighborhood_radius", neighborhood_radius_, neighborhood_radius_);
             pnh_.param("max_nn_height_diff", max_nn_height_diff_, max_nn_height_diff_);
             pnh_.param("viewpoints_update_freq", viewpoints_update_freq_, viewpoints_update_freq_);
             pnh_.param("min_vp_distance", min_vp_distance_, min_vp_distance_);
             pnh_.param("max_vp_distance", max_vp_distance_, max_vp_distance_);
+            pnh_.param("self_factor", self_factor_, self_factor_);
 
             bool among_robots = false;
             for (const auto& kv: robot_frames_)
@@ -575,11 +575,12 @@ namespace naex
             }
             if (!among_robots)
             {
-                ROS_INFO("Inserting my robot frame among all robot frames.");
+                ROS_INFO("Inserting robot frame among all robot frames.");
                 robot_frames_["SELF"] = robot_frame_;
             }
 
-            viewpoints_.reserve(size_t(7200. * viewpoints_update_freq_) * 3 * robot_frames_.size());
+            viewpoints_.reserve(size_t(7200. * viewpoints_update_freq_) * 3);
+            other_viewpoints_.reserve(size_t(7200. * viewpoints_update_freq_) * 3 * robot_frames_.size());
 
             // C++14
 //            tf_ = std::make_unique<tf2_ros::Buffer>(ros::Duration(10.));
@@ -608,6 +609,7 @@ namespace naex
                 ROS_ERROR("Could not gather robot positions due to missing map frame.");
                 return;
             }
+            Lock lock(viewpoints_mutex_);
             for (const auto& kv: robot_frames_)
             {
                 const auto& frame = kv.second;
@@ -615,10 +617,18 @@ namespace naex
                 {
                     // Get last transform available (don't wait).
                     auto tf = tf_->lookupTransform(map_frame_, robot_frame_, ros::Time(0));
-                    Lock lock(viewpoints_mutex_);
-                    viewpoints_.push_back(tf.transform.translation.x);
-                    viewpoints_.push_back(tf.transform.translation.y);
-                    viewpoints_.push_back(tf.transform.translation.z);
+                    if (frame == robot_frame_)
+                    {
+                        viewpoints_.push_back(tf.transform.translation.x);
+                        viewpoints_.push_back(tf.transform.translation.y);
+                        viewpoints_.push_back(tf.transform.translation.z);
+                    }
+                    else
+                    {
+                        other_viewpoints_.push_back(tf.transform.translation.x);
+                        other_viewpoints_.push_back(tf.transform.translation.y);
+                        other_viewpoints_.push_back(tf.transform.translation.z);
+                    }
                 }
                 catch (const tf2::TransformException& ex)
                 {
@@ -682,6 +692,54 @@ namespace naex
                 }
                 path.poses.push_back(pose);
             }
+        }
+
+        Buffer<Elem> viewpoint_dist(const flann::Matrix<Elem>& points)
+        {
+            Timer t;
+            Buffer<Elem> dist(points.rows);
+            std::vector<Elem> vp_copy;
+            {
+                Lock lock(viewpoints_mutex_);
+                if (viewpoints_.empty())
+                {
+                    ROS_WARN("No viewpoints gathered. Return infinity.");
+                    std::fill(dist.begin(), dist.end(), std::numeric_limits<Elem>::infinity());
+                    return dist;
+                }
+                vp_copy = viewpoints_;
+            }
+            size_t n_vp = vp_copy.size() / 3;
+            ROS_INFO("Number of viewpoints: %lu.", n_vp);
+            flann::Matrix<Elem> vp(vp_copy.data(), n_vp, 3);
+            flann::Index<flann::L2_3D<Elem>> vp_index(vp, flann::KDTreeIndexParams(2));
+            vp_index.buildIndex();
+            Query<Elem> vp_query(vp_index, points, 1);
+            return vp_query.dist_buf_;
+        }
+
+        Buffer<Elem> other_viewpoint_dist(const flann::Matrix<Elem>& points)
+        {
+            Timer t;
+            Buffer<Elem> dist(points.rows);
+            std::vector<Elem> vp_copy;
+            {
+                Lock lock(viewpoints_mutex_);
+                if (other_viewpoints_.empty())
+                {
+                    ROS_WARN("No viewpoints gathered from other robots. Return infinity.");
+                    std::fill(dist.begin(), dist.end(), std::numeric_limits<Elem>::infinity());
+                    return dist;
+                }
+                vp_copy = other_viewpoints_;
+            }
+            size_t n_vp = vp_copy.size() / 3;
+            ROS_INFO("Number of viewpoints from other robots: %lu.", n_vp);
+            flann::Matrix<Elem> vp(vp_copy.data(), n_vp, 3);
+            flann::Index<flann::L2_3D<Elem>> vp_index(vp, flann::KDTreeIndexParams(2));
+            vp_index.buildIndex();
+            Query<Elem> vp_query(vp_index, points, 1);
+            return vp_query.dist_buf_;
         }
 
         void plan(const sensor_msgs::PointCloud2& cloud, const geometry_msgs::PoseStamped& start)
@@ -757,43 +815,28 @@ namespace naex
 //            return;
 
             // Compute vertex utility as minimum observation distance.
-            Buffer<Elem> utility;
-            {
-                Lock lock(viewpoints_mutex_);
-                Timer t;
-                size_t n_vp = viewpoints_.size() / 3;
-                flann::Matrix<Elem> vp;
-                if (n_vp == 0)
-                {
-                    ROS_WARN("No viewpoints gathered. Using start position only.");
-                    n_vp = 1;
-                    vp = flann::Matrix<Elem>(start_position.data(), n_vp, 3);
-                }
-                else
-                {
-                    ROS_INFO("Number of viewpoints from all robots: %lu.", n_vp);
-                    vp = flann::Matrix<Elem>(viewpoints_.data(), n_vp, 3);
-                }
-//                for (size_t i = 0; i < vp.rows; ++i)
-//                {
-//                    ROS_INFO("Viewpoint %lu: [%.1f, %.1f, %.1f].", i, vp[i][0], vp[i][1], vp[i][2]);
-//                }
-                flann::Index<flann::L2_3D<Elem>> vp_index(vp, flann::KDTreeIndexParams(2));
-                vp_index.buildIndex();
-                Query<Elem> vp_query(vp_index, g.points_, 1);
-                utility = vp_query.dist_buf_;
-                ROS_INFO("Vertex utility (%u pts, %lu vp): %.3f s.", g.num_vertices(), n_vp, t.seconds_elapsed());
-            }
-            size_t i = 0;
-            for (auto it = utility.begin(); it != utility.end(); ++it, ++i)
+            Buffer<Elem> vp_dist = viewpoint_dist(points);
+            Buffer<Elem> other_vp_dist = other_viewpoint_dist(points);
+            assert(vp_dist.size() == points.rows);
+            assert(other_vp_dist.size() == points.rows);
+            Buffer<Elem> utility(vp_dist.size());
+
+            auto it_vp = vp_dist.begin();
+            auto it_other_vp = other_vp_dist.begin();
+            auto it_utility = utility.begin();
+            for (size_t i = 0; i < utility.size(); ++i, ++it_vp, ++it_other_vp, ++it_utility)
             {
                 // Multiply the (clipped) Euclidean distance to encourage exploration.
 //                *it = 3.f * std::min(std::max(std::sqrt(*it) - 2.f * neighborhood_radius_, 0.f), 5.f);
-                *it = std::min(std::max(std::sqrt(*it) - min_vp_distance_, 0.f), max_vp_distance_) / max_vp_distance_;
+//                *it = std::min(std::max(std::sqrt(*it) - min_vp_distance_, 0.f), max_vp_distance_) / max_vp_distance_;
+                const auto vp_dist = std::sqrt(*it_vp);
+                const auto vp_dist_all = std::min(vp_dist, std::sqrt(*it_other_vp));
+                const auto util = std::min(std::max(vp_dist - min_vp_distance_, 0.f), max_vp_distance_) / max_vp_distance_;
+                const auto util_all = std::min(std::max(vp_dist_all - min_vp_distance_, 0.f), max_vp_distance_) / max_vp_distance_;
+                *it_utility = std::max(self_factor_ * util, util_all);
                 // Prefer frontiers in a specific subspace (e.g. positive x).
                 // TODO: Ensure frame subt is used here.
-//                *it += 3.f * std::min(points[i][0] - 10.f, 0.f);
-                *it /= std::max(-points[i][0] + 9.f, 1.f);
+                *it_utility /= std::max(-points[i][0] + 9.f, 1.f);
             }
             fill_field("utility", utility.begin(), debug_cloud);
             utility_cloud_pub_.publish(debug_cloud);
@@ -804,11 +847,11 @@ namespace naex
             Vertex v_goal = v_start;
             Vertex v = 0;
             auto it_path_cost = path_costs.begin();
-            auto it_utility = utility.begin();
+            it_utility = utility.begin();
             auto it_final_cost = final_costs.begin();
             for (; it_path_cost != path_costs.end(); ++v, ++it_path_cost, ++it_utility, ++it_final_cost)
             {
-//                *it_final_cost = *it_path_cost - *it_utility;
+                // *it_final_cost = *it_path_cost - *it_utility;
                 *it_final_cost = std::log(*it_path_cost / (*it_utility + 1e-6f));
                 // Avoid single pose paths and paths with no utility.
                 if (*it_final_cost < goal_cost && *it_path_cost > 0. && *it_utility > 0.)
@@ -937,8 +980,10 @@ namespace naex
         float viewpoints_update_freq_;
         ros::Timer viewpoints_update_timer_;
         std::vector<Elem> viewpoints_;  // 3xN
+        std::vector<Elem> other_viewpoints_;  // 3xN
         float min_vp_distance_;
         float max_vp_distance_;
+        float self_factor_;
 
         int queue_size_;
     };
