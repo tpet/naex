@@ -375,7 +375,8 @@ class PathFollower(object):
             angular_rate = np.clip(p_angle * angle, -self.max_angular_rate, self.max_angular_rate)
 
             # Linear velocity
-            p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
+            # p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
+            p_dist = 1.5 * max(np.cos(2. * angle), 0.)
             speed = np.clip(p_dist * dist, 0., self.max_speed)
 
             msg = Twist()
