@@ -388,6 +388,8 @@ class PathFollower(object):
 
         except tf2_ros.TransformException as ex:
             rospy.logerr('Robot pose lookup failed: %s.', ex)
+        except rospy.ROSTimeMovedBackwardsException as ex:
+            rospy.logerr('Time moved backward: %s.', ex)
 
 
 if __name__ == '__main__':
