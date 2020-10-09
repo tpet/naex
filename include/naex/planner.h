@@ -145,6 +145,26 @@ namespace naex
         fill_const_field("final_cost", std::numeric_limits<float>::quiet_NaN(), cloud);
     }
 
+    void create_xyz_cloud(
+            const flann::Matrix<Elem>& points,
+            sensor_msgs::PointCloud2& cloud)
+    {
+        sensor_msgs::PointCloud2Modifier modifier(cloud);
+        modifier.setPointCloud2Fields(3,
+                "x", 1, sensor_msgs::PointField::FLOAT32,
+                "y", 1, sensor_msgs::PointField::FLOAT32,
+                "z", 1, sensor_msgs::PointField::FLOAT32);
+        modifier.resize(points.rows);
+
+        sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x");
+        for (size_t i = 0; i < points.rows; ++i, ++x_it)
+        {
+            x_it[0] = points[i][0];
+            x_it[1] = points[i][1];
+            x_it[2] = points[i][2];
+        }
+    }
+
     template<typename T>
     class Query
     {
@@ -740,6 +760,9 @@ namespace naex
 
             path_pub_ = nh_.advertise<nav_msgs::Path>("path", 5);
             minpos_path_pub_ = nh_.advertise<nav_msgs::Path>("minpos_path", 5);
+
+            viewpoints_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("viewpoints", 5);
+            other_viewpoints_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("other_viewpoints", 5);
             cloud_sub_ = nh_.subscribe("cloud", queue_size_, &Planner::cloud_received, this);
         }
 
@@ -758,7 +781,7 @@ namespace naex
                 try
                 {
                     // Get last transform available (don't wait).
-                    auto tf = tf_->lookupTransform(map_frame_, robot_frame_, ros::Time(0));
+                    auto tf = tf_->lookupTransform(map_frame_, frame, ros::Time());
                     if (frame == robot_frame_)
                     {
                         viewpoints_.push_back(tf.transform.translation.x);
@@ -778,6 +801,20 @@ namespace naex
                     continue;
                 }
             }
+            auto now = ros::Time::now();
+            sensor_msgs::PointCloud2 vp_cloud;
+            flann::Matrix<Elem> vp(viewpoints_.data(), viewpoints_.size(), 3);
+            create_xyz_cloud(vp, vp_cloud);
+            vp_cloud.header.frame_id = map_frame_;
+            vp_cloud.header.stamp = now;
+            viewpoints_pub_.publish(vp_cloud);
+
+            sensor_msgs::PointCloud2 other_vp_cloud;
+            flann::Matrix<Elem> other_vp(other_viewpoints_.data(), other_viewpoints_.size(), 3);
+            create_xyz_cloud(other_vp, other_vp_cloud);
+            other_vp_cloud.header.frame_id = map_frame_;
+            other_vp_cloud.header.stamp = now;
+            other_viewpoints_pub_.publish(other_vp_cloud);
         }
 
         void trace_path_indices(Vertex start, Vertex goal, const Buffer<Vertex>& predecessor,
@@ -1147,6 +1184,8 @@ namespace naex
         ros::Publisher final_cost_cloud_pub_;
         ros::Publisher path_pub_;
         ros::Publisher minpos_path_pub_;
+        ros::Publisher viewpoints_pub_;
+        ros::Publisher other_viewpoints_pub_;
         ros::Subscriber cloud_sub_;
 
         std::string position_name_;
@@ -1177,6 +1216,7 @@ namespace naex
         ros::WallTimer update_params_timer_;
         std::vector<Elem> viewpoints_;  // 3xN
         std::vector<Elem> other_viewpoints_;  // 3xN
+//        std::map<std::string, Vec3> last_positions_;
         float min_vp_distance_;
         float max_vp_distance_;
         float self_factor_;
