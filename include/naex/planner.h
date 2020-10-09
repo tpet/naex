@@ -308,8 +308,8 @@ namespace naex
 //                ground_diff_min_
 //                ++n_computed;
             }
-            ROS_INFO("%lu / %lu normals recomputed from %lu nn closer than %.2g: %.3f s.",
-                    n_computed, nn_.rows, nn_.cols, radius_, t.seconds_elapsed());
+            ROS_INFO("Normals recomputed for %lu points from %lu nn within %.2g m: %.3f s.",
+                    nn_.rows, nn_.cols, radius_, t.seconds_elapsed());
         }
 
         /** Traversability based on NN graph. */
