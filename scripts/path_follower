@@ -87,6 +87,9 @@ class PathFollower(object):
         self.clearance_box = np.array(clearance_box)
         self.show_clearance = rospy.get_param('~show_clearance_pos', [-10, 10])
         self.min_points_obstacle = rospy.get_param('~min_points_obstacle', 1)
+        self.force_through_after = rospy.get_param('~force_through_after', 30.)
+        self.allow_backward = rospy.get_param('~allow_backward', True)
+        self.stuck_since = None
 
         self.path_lock = RLock()
         self.path_msg = None  # Path message
@@ -330,9 +333,20 @@ class PathFollower(object):
                 ind = slice(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
                 self.publish_clearance(self.path_msg, ind)
                 if not self.check_pose_clearance(self.path_msg.poses[i].pose):
-                    rospy.logwarn('Goal obstructed, waiting...')
-                    self.cmd_pub.publish(Twist())
-                    return
+                    if self.stuck_since is None:
+                        self.stuck_since = rospy.Time.now()
+                    stuck_duration = (rospy.Time.now() - self.stuck_since).to_sec()
+                    if stuck_duration < self.force_through_after:
+                        rospy.logwarn('Path to goal obstructed (for %.1f s), waiting...', stuck_duration)
+                        self.cmd_pub.publish(Twist())
+                        return
+                    else:
+                        rospy.logwarn('Path to goal obstructed for %.1f s >= %.1f s, forcing through...',
+                                      stuck_duration, self.force_through_after)
+                else:
+                    if self.stuck_since:
+                        rospy.logwarn('Path to goal free again.')
+                    self.stuck_since = None
 
                 # Convert the goal into robot frame.
                 local_goal = p2e(np.linalg.solve(pose, e2p(goal)))
@@ -369,6 +383,12 @@ class PathFollower(object):
                     self.clear_path()
                     self.cmd_pub.publish(Twist())
                     return
+            
+            if self.allow_backward and np.abs(angle) > np.pi / 2.:
+                angle = np.mod(angle + np.pi / 2., np.pi) - np.pi / 2.
+                vel_sign = -1.
+            else:
+                vel_sign = 1.
 
             # Angular rate
             p_angle = 1.5
@@ -377,14 +397,14 @@ class PathFollower(object):
             # Linear velocity
             # p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
             p_dist = 1.5 * max(np.cos(2. * angle), 0.)
-            speed = np.clip(p_dist * dist, 0., self.max_speed)
+            speed = vel_sign * np.clip(p_dist * dist, 0., self.max_speed)
 
             msg = Twist()
             msg.angular.z = angular_rate
             msg.linear.x = speed
             self.cmd_pub.publish(msg)
-            rospy.logdebug('Speed: %.2f m/s, angular rate: %.1f rad/s. (%.3f s)',
-                           speed, angular_rate, timer() - t)
+            rospy.loginfo('Speed: %.2f m/s, angular rate: %.1f rad/s. (%.3f s)',
+                          speed, angular_rate, timer() - t)
 
         except tf2_ros.TransformException as ex:
             rospy.logerr('Robot pose lookup failed: %s.', ex)
