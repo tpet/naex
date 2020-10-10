@@ -365,7 +365,7 @@ namespace naex
                 {
                     // Avoid driving near obstacles.
                     const auto v1 = nn_[v0][j];
-                    if (labels_[v0] == TRAVERSABLE && dist_[v0][j] <= radius_ && labels_[v1] == OBSTACLE)
+                    if (labels_[v0] == TRAVERSABLE && labels_[v1] == OBSTACLE && dist_[v0][j] <= radius_)
                     {
                         labels_[v0] = UNKNOWN;
                         ++n_unknown;
