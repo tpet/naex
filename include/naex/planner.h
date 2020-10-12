@@ -1188,6 +1188,7 @@ namespace naex
 
             int num_input_clouds = 1;
             pnh_.param("num_input_clouds", num_input_clouds, num_input_clouds);
+            pnh_.param("input_queue_size", queue_size_, queue_size_);
             pnh_.param("points_min_dist", map_.points_min_dist_, map_.points_min_dist_);
             pnh_.param("min_empty_cos", map_.min_empty_cos_, map_.min_empty_cos_);
             pnh_.param("empty_ratio", empty_ratio_, empty_ratio_);
@@ -1519,7 +1520,7 @@ namespace naex
 
             // Use the nearest traversable point to robot as the starting point.
             Vec3 start_position(start.pose.position.x, start.pose.position.y, start.pose.position.z);
-            Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), 64);
+            Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), 32);
             // Get traversable points.
             std::vector<Elem> traversable;
             traversable.reserve(64);
@@ -1532,7 +1533,8 @@ namespace naex
             }
             if (traversable.empty())
             {
-                ROS_ERROR("No traversable point nearby.");
+                ROS_ERROR("No traversable point near [%.1f, %.1f, %.1f].",
+                        start_position.x(), start_position.y(), start_position.z());
                 return;
             }
 //            Vertex v_start = start_query.nn_buf_[0];
@@ -1552,6 +1554,9 @@ namespace naex
 //                    min_dist = dist;
 //                }
 //            }
+            ROS_INFO("Planning from [%.1f, %.1f, %.1f], robot at [%.1f, %.1f, %.1f], %lu traversable points nearby.",
+                    g.points_[v_start][0], g.points_[v_start][1], g.points_[v_start][2],
+                    start_position.x(), start_position.y(), start_position.z(), traversable.size());
 
             // TODO: Append starting pose as a special vertex with orientation dependent edges.
             // Note, that for some worlds and robots, the neighborhood must be quite large to get traversable points.
@@ -1789,7 +1794,7 @@ namespace naex
             std::vector<Elem> robots;
             if (filter_robots_)
             {
-                find_robots(cloud->header.frame_id, cloud->header.stamp, robots, 3.f);
+                find_robots(cloud->header.frame_id, cloud->header.stamp, robots, 2.f);
             }
 
             Vec3 origin = transform * Vec3(0., 0., 0.);
