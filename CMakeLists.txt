@@ -38,16 +38,18 @@ catkin_package(
     CATKIN_DEPENDS ${CATKIN_DEPS}
 )
 
-add_executable(follower src/follower_node.cpp)
-target_link_libraries(follower ${catkin_LIBRARIES})
+#add_executable(follower src/follower_node.cpp)
+#target_link_libraries(follower ${catkin_LIBRARIES})
 
 # https://stackoverflow.com/a/51448364/3456661
 add_executable(planner src/planner_node.cpp)
-target_link_libraries(planner PRIVATE ${catkin_LIBRARIES} Eigen3::Eigen ${Flann_LIBRARY} lz4 OpenMP::OpenMP_CXX)
+target_link_libraries(planner ${catkin_LIBRARIES} Eigen3::Eigen ${Flann_LIBRARY} lz4 OpenMP::OpenMP_CXX)
+#target_link_libraries(planner PRIVATE Eigen3::Eigen)
+#target_link_libraries(planner ${catkin_LIBRARIES} ${Flann_LIBRARY} lz4 OpenMP::OpenMP_CXX)
 
 install(
     TARGETS
-        follower
+#        follower
         planner
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

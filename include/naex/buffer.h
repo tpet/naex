@@ -107,7 +107,7 @@ public:
 
     bool empty() const
     {
-        return size_ == 0;
+        return size() == 0;
 //        return !begin_;
     }
 
@@ -116,6 +116,13 @@ public:
         begin_ = std::shared_ptr<T>(new T[size], std::default_delete<T[]>());
 //        end_ = begin_.get() + size;
         size_ = size;
+    }
+
+    Buffer<T> copy(size_t size)
+    {
+        Buffer<T> out(size);
+        std::copy(begin(), begin() + std::min(this->size(), size), out.begin());
+        return out;
     }
 
     T* begin()
