@@ -10,5 +10,7 @@ int main (int argc, char *argv[])
     ros::init(argc, argv, "planner");
     ros::NodeHandle nh, pnh("~");
     naex::Planner planner(nh, pnh);
-    ros::spin();
+//    ros::spin();
+    ros::MultiThreadedSpinner spinner(4);
+    spinner.spin();
 }
