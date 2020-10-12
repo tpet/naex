@@ -16,6 +16,7 @@
 #include <naex/buffer.h>
 #include <naex/timer.h>
 #include <nav_msgs/Path.h>
+#include <random>
 #include <ros/ros.h>
 #include <sensor_msgs/point_cloud2_iterator.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -1487,7 +1488,8 @@ namespace naex
             std::vector<Elem> robots;
             if (filter_robots_)
             {
-                find_robots(map_frame_, ros::Time::now(), robots);
+                // Don't wait for robot positions for planning.
+                find_robots(map_frame_, ros::Time(), robots, 0.f);
             }
             g.compute_occupancy_labels(robots);
             // Construct NN graph.
@@ -1518,20 +1520,39 @@ namespace naex
             // Use the nearest traversable point to robot as the starting point.
             Vec3 start_position(start.pose.position.x, start.pose.position.y, start.pose.position.z);
             Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), 64);
-            Vertex v_start = start_query.nn_buf_[0];
-            Elem min_dist = std::numeric_limits<Elem>::infinity();
+            // Get traversable points.
+            std::vector<Elem> traversable;
+            traversable.reserve(64);
             for (const auto& v: start_query.nn_buf_)
             {
-                if (g.labels_[v] != TRAVERSABLE)
-                    continue;
-                Elem dist = (ConstVec3Map(points[v]) - start_position).norm();
-
-                if (dist < min_dist)
+                if (g.labels_[v] == TRAVERSABLE)
                 {
-                    v_start = v;
-                    min_dist = dist;
+                    traversable.push_back(v);
                 }
             }
+            if (traversable.empty())
+            {
+                ROS_ERROR("No traversable point nearby.");
+                return;
+            }
+//            Vertex v_start = start_query.nn_buf_[0];
+            // Get random traversable point as start.
+            Vertex v_start = traversable[std::rand() % traversable.size()];
+//            Elem min_dist = std::numeric_limits<Elem>::infinity();
+//            for (const auto& v: start_query.nn_buf_)
+//            {
+//                if (g.labels_[v] != TRAVERSABLE)
+//                    continue;
+//                if (g.labels_[v] )
+//                Elem dist = (ConstVec3Map(points[v]) - start_position).norm();
+//
+//                if (dist < min_dist)
+//                {
+//                    v_start = v;
+//                    min_dist = dist;
+//                }
+//            }
+
             // TODO: Append starting pose as a special vertex with orientation dependent edges.
             // Note, that for some worlds and robots, the neighborhood must be quite large to get traversable points.
             // See e.g. X1 @ cave_circuit_practice_01.
@@ -1707,7 +1728,7 @@ namespace naex
             ROS_INFO("Planning in map: %.3f s.", t.seconds_elapsed());
         }
 
-        void find_robots(const std::string& frame, const ros::Time& stamp, std::vector<Elem>& robots)
+        void find_robots(const std::string& frame, const ros::Time& stamp, std::vector<Elem>& robots, float timeout)
         {
             robots.reserve(robot_frames_.size());
             for (const auto kv: robot_frames_)
@@ -1716,11 +1737,11 @@ namespace naex
                 {
                     continue;
                 }
-                ros::Duration timeout(std::max(5. - (ros::Time::now() - stamp).toSec(), 0.));
+                ros::Duration timeout_duration(std::max(timeout - (ros::Time::now() - stamp).toSec(), 0.));
                 geometry_msgs::TransformStamped tf;
                 try
                 {
-                    tf = tf_->lookupTransform(frame, stamp, kv.second, stamp, map_frame_, timeout);
+                    tf = tf_->lookupTransform(frame, stamp, kv.second, stamp, map_frame_, timeout_duration);
                 }
                 catch (const tf2::TransformException& ex)
                 {
@@ -1768,7 +1789,7 @@ namespace naex
             std::vector<Elem> robots;
             if (filter_robots_)
             {
-                find_robots(cloud->header.frame_id, cloud->header.stamp, robots);
+                find_robots(cloud->header.frame_id, cloud->header.stamp, robots, 3.f);
             }
 
             Vec3 origin = transform * Vec3(0., 0., 0.);
