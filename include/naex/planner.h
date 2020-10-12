@@ -57,7 +57,8 @@ namespace naex
         TRAVERSABLE = 0,
         EMPTY = 1,
         UNKNOWN = 2,
-        OBSTACLE = 3
+        ACTOR = 3,
+        OBSTACLE = 4
     };
     typedef Buffer<uint8_t> Labels;
 
@@ -314,13 +315,17 @@ namespace naex
                 {
                     labels_[v] = EMPTY;
                     ++n_empty;
+                    continue;
                 }
                 // Avoid other robots.
                 for (Index i = 0; i + 2 < robots.size(); i += 3)
                 {
-                    if ((ConstVec3Map(points_[v]) - ConstVec3Map(&robots[i])).norm() < radius_)
+                    if ((ConstVec3Map(points_[v]) - ConstVec3Map(&robots[i])).norm() <= 1.5f * radius_)
                     {
-                        labels_[v] = UNKNOWN;
+                        ROS_INFO("[%.1f, %.1f, %.1f] within %.1f m from robot [%.1f, %.1f, %.1f].",
+                                points_[v][0], points_[v][0], points_[v][0], radius_,
+                                robots[i], robots[i + 1],robots[i + 2]);
+                        labels_[v] = ACTOR;
                         break;
                     }
                 }
@@ -336,12 +341,16 @@ namespace naex
             // Maximum slope allowed in some direction.
             auto max_slope = std::max(max_pitch_, max_roll_);
             auto min_z = std::cos(max_slope);
-            Index n_traverable = 0, n_empty = 0, n_obstacle = 0, n_unknown = 0;
+            Index n_traverable = 0, n_empty = 0, n_unknown = 0, n_actor = 0, n_obstacle = 0;
             for (size_t i = 0; i < normals_.rows; ++i)
             {
                 if (labels_[i] == EMPTY)
                 {
                     ++n_empty;
+                }
+                else if (labels_[i] == ACTOR)
+                {
+                    ++n_actor;
                 }
                 else if (std::abs(normals_[i][2]) >= min_z)
                 {
@@ -362,8 +371,8 @@ namespace naex
                     ++n_unknown;
                 }
             }
-            ROS_INFO("Normal labels (%lu pts): %u traversable, %u empty, %u unknown, %u obstacle (%.3f s).",
-                    normals_.rows, n_traverable, n_empty, n_unknown, n_obstacle, t.seconds_elapsed());
+            ROS_INFO("Normal labels (%lu pts): %u traversable, %u empty, %u unknown, %u actor, %u obstacle (%.3f s).",
+                    normals_.rows, n_traverable, n_empty, n_unknown, n_actor, n_obstacle, t.seconds_elapsed());
         }
 
         void compute_graph_features(size_t min_normal_pts, Elem radius)
@@ -442,7 +451,7 @@ namespace naex
             ground_abs_diff_mean_.resize(nn_.rows);
             num_obstacle_pts_.resize(nn_.rows);
             // Maximum slope allowed in some direction.
-            Index n_traverable = 0, n_empty = 0, n_unknown = 0, n_obstacle = 0;
+            Index n_traverable = 0, n_empty = 0, n_unknown = 0, n_actor = 0, n_obstacle = 0;
 //            ROS_INFO("NN rows: %lu, cols %lu", nn_.rows, nn_.cols);
             for (Vertex v0 = 0; v0 < nn_.rows; ++v0)
             {
@@ -450,6 +459,11 @@ namespace naex
                 if (labels_[v0] == EMPTY)
                 {
                     ++n_empty;
+                    continue;
+                }
+                if (labels_[v0] == ACTOR)
+                {
+                    ++n_actor;
                     continue;
                 }
                 // Adjust only traversable points.
@@ -534,8 +548,8 @@ namespace naex
                     ++n_obstacle;
                 }
             }
-            ROS_INFO("Final labels (%lu pts): %u traversable, %u empty, %u unknown, %u obstacle (%.3f s).",
-                    normals_.rows, n_traverable, n_empty, n_unknown, n_obstacle, t.seconds_elapsed());
+            ROS_INFO("Final labels (%lu pts): %u traversable, %u empty, %u unknown, %u actor, %u obstacle (%.3f s).",
+                    normals_.rows, n_traverable, n_empty, n_unknown, n_actor, n_obstacle, t.seconds_elapsed());
         }
 
         void build_index()
@@ -1486,6 +1500,8 @@ namespace naex
             ROS_INFO("Creating graph...");
             // Compute preliminary point labels based on normals.
             Graph g(points, normals, occupied, empty, max_pitch_, max_roll_, uint16_t(empty_ratio_));
+            g.k_ = neighborhood_knn_;
+            g.radius_ = neighborhood_radius_;
             std::vector<Elem> robots;
             if (filter_robots_)
             {
