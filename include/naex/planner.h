@@ -15,6 +15,7 @@
 #include <mutex>
 #include <naex/buffer.h>
 #include <naex/timer.h>
+#include <nav_msgs/GetPlan.h>
 #include <nav_msgs/Path.h>
 #include <random>
 #include <ros/ros.h>
@@ -62,6 +63,8 @@ namespace naex
         OBSTACLE = 5
     };
     typedef Buffer<uint8_t> Labels;
+
+    const Vertex INVALID_VERTEX = std::numeric_limits<Vertex>::max();
 
     void transform_to_pose(const geometry_msgs::Transform& tf, geometry_msgs::Pose& pose)
     {
@@ -357,9 +360,8 @@ namespace naex
                 {
                     ++n_actor;
                 }
-                else if (std::abs(normals_[i][2]) >= min_z && labels_[i] != UNKNOWN)
+                else if (std::abs(normals_[i][2]) >= min_z)
                 {
-                    // UNKNOWN can be the safety label based on centroid offset.
                     // Approx. horizontal based on normal (with correct orientation).
                     labels_[i] = TRAVERSABLE;
                     ++n_traverable;
@@ -445,7 +447,7 @@ namespace naex
 //                ++n_computed;
                 // Inject support label here where we have computed mean.
 //                labels_
-                if ((mean - ConstVec3Map(points_[v0])).norm() > 0.5 * semicircle_centroid_offset)
+                if ((mean - ConstVec3Map(points_[v0])).norm() > 0.75 * semicircle_centroid_offset)
                 {
                     labels_[v0] = EDGE;
                 }
@@ -1277,6 +1279,8 @@ namespace naex
                     &Planner::planning_timer_cb, this);
             update_params_timer_ = nh_.createWallTimer(ros::WallDuration(2.0),
                     &Planner::update_params, this);
+
+            get_plan_service_ = nh_.advertiseService("get_plan", &Planner::plan, this);
         }
 
         void gather_viewpoints(const ros::TimerEvent& event)
@@ -1483,8 +1487,12 @@ namespace naex
             ROS_INFO("Copy of %lu points and normals: %.3f s.", n_pts, t.seconds_elapsed());
         }
 
-        void plan(const geometry_msgs::PoseStamped& start)
+//        bool plan(const geometry_msgs::PoseStamped& start)
+        bool plan(nav_msgs::GetPlanRequest& req, nav_msgs::GetPlanResponse& res)
         {
+            Timer t;
+            const geometry_msgs::PoseStamped& start = req.start;
+            const geometry_msgs::PoseStamped& goal = req.goal;
             ROS_INFO("Planning started from [%.1f, %.1f, %.1f].",
                     start.pose.position.x, start.pose.position.y, start.pose.position.z);
 
@@ -1499,10 +1507,10 @@ namespace naex
             size_t min_map_points = 64;
             if (points.rows < min_map_points)
             {
-                ROS_WARN("Cannot plan in map with %lu < %lu points.", points.rows, min_map_points);
-                return;
+                ROS_ERROR("Cannot plan in map with %lu < %lu points.", points.rows, min_map_points);
+                return false;
             }
-            Timer t;
+
             // Moved to input_map_received above.
 
             // Initialize debug cloud for visualization of intermediate results.
@@ -1557,7 +1565,7 @@ namespace naex
             Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), 32);
             // Get traversable points.
             std::vector<Elem> traversable;
-            traversable.reserve(64);
+            traversable.reserve(32);
             for (const auto& v: start_query.nn_buf_)
             {
                 if (g.labels_[v] == TRAVERSABLE || g.labels_[v] == EDGE)
@@ -1567,9 +1575,9 @@ namespace naex
             }
             if (traversable.empty())
             {
-                ROS_ERROR("No traversable point near [%.1f, %.1f, %.1f].",
+                ROS_ERROR("No traversable point near start [%.1f, %.1f, %.1f].",
                         start_position.x(), start_position.y(), start_position.z());
-                return;
+                return false;
             }
 //            Vertex v_start = start_query.nn_buf_[0];
             // Get random traversable point as start.
@@ -1592,6 +1600,31 @@ namespace naex
                     g.points_[v_start][0], g.points_[v_start][1], g.points_[v_start][2],
                     start_position.x(), start_position.y(), start_position.z(), traversable.size());
 
+            Vertex v_goal = INVALID_VERTEX;
+            if (std::isfinite(goal.pose.position.x))
+            {
+                Vec3 goal_position(goal.pose.position.x, goal.pose.position.y, goal.pose.position.z);
+                Query<Elem> goal_query(g.points_index_, flann::Matrix<Elem>(goal_position.data(), 1, 3), 32);
+                // Get traversable points.
+                std::vector<Elem> traversable;
+                traversable.reserve(32);
+                for (const auto& v: start_query.nn_buf_)
+                {
+                    if (g.labels_[v] == TRAVERSABLE || g.labels_[v] == EDGE)
+                    {
+                        traversable.push_back(v);
+                    }
+                }
+                if (traversable.empty())
+                {
+                    ROS_ERROR("No traversable point near goal [%.1f, %.1f, %.1f].",
+                            goal_position.x(), goal_position.y(), goal_position.z());
+                    return false;
+                }
+                // Get random traversable point as start.
+                v_goal = traversable[std::rand() % traversable.size()];
+            }
+
             // TODO: Append starting pose as a special vertex with orientation dependent edges.
             // Note, that for some worlds and robots, the neighborhood must be quite large to get traversable points.
             // See e.g. X1 @ cave_circuit_practice_01.
@@ -1602,8 +1635,7 @@ namespace naex
             EdgeCosts edge_costs(g);
             boost::typed_identity_property_map<Vertex> index_map;
 
-            t.reset();
-//            std::cout << "DIJKSTRA" << std::endl;
+            Timer t_dijkstra;
             // boost::dijkstra_shortest_paths(g, ::Graph::V(0),
             boost::dijkstra_shortest_paths_no_color_map(g, v_start,
 //                    &predecessor[0], &path_costs[0], edge_costs,
@@ -1611,10 +1643,27 @@ namespace naex
                     index_map,
                     std::less<Elem>(), boost::closed_plus<Elem>(), std::numeric_limits<Elem>::infinity(), Elem(0.),
                     boost::dijkstra_visitor<boost::null_visitor>());
-            ROS_INFO("Dijkstra (%u pts): %.3f s.", g.num_vertices(), t.seconds_elapsed());
+            ROS_INFO("Dijkstra (%u pts): %.3f s.", g.num_vertices(), t_dijkstra.seconds_elapsed());
             fill_field("path_cost", path_costs.begin(), debug_cloud);
             path_cost_cloud_pub_.publish(debug_cloud);
-//            return;
+
+            // If planning for given goal, just backtrack the path.
+            if (v_goal != INVALID_VERTEX)
+            {
+                if (std::isinf(path_costs[v_goal]))
+                {
+                    ROS_INFO("No feasible path found (%.3f s).", t.seconds_elapsed());
+                    return false;
+                }
+                std::vector<Vertex> path_indices;
+                trace_path_indices(v_start, v_goal, predecessor, path_indices);
+                res.plan.header.frame_id = map_frame_;
+                res.plan.header.stamp = ros::Time::now();
+                res.plan.poses.push_back(start);
+                append_path(path_indices, points, normals, res.plan);
+                ROS_INFO("Path of length %lu (%.3f s).", res.plan.poses.size(), t.seconds_elapsed());
+                return true;
+            }
 
             // Compute vertex utility as minimum observation distance.
             Buffer<Elem> vp_dist = viewpoint_dist(points);
@@ -1653,7 +1702,7 @@ namespace naex
             // Publish final cost cloud.
             Buffer<Elem> final_costs(path_costs.size());
             Elem goal_cost = std::numeric_limits<Elem>::infinity();
-            Vertex v_goal = v_start;
+            v_goal = INVALID_VERTEX;
             Vertex v = 0;
             auto it_path_cost = path_costs.begin();
             it_utility = utility.begin();
@@ -1670,6 +1719,12 @@ namespace naex
                     v_goal = v;
                 }
             }
+            if (v_goal == INVALID_VERTEX)
+            {
+                ROS_ERROR("No valid path/goal found.");
+                return false;
+            }
+
             ROS_INFO("Goal position: %.1f, %.1f, %.1f m: cost %.3g, utility %.3g, final cost %.3g.",
                     points[v_goal][0], points[v_goal][1], points[v_goal][2],
                     path_costs[v_goal], utility[v_goal], final_costs[v_goal]);
@@ -1681,13 +1736,13 @@ namespace naex
             std::vector<Vertex> path_indices;
             trace_path_indices(v_start, v_goal, predecessor, path_indices);
 
-            nav_msgs::Path path;
-            path.header.frame_id = map_frame_;
-            path.header.stamp = ros::Time::now();
-            path.poses.push_back(start);
-            append_path(path_indices, points, normals, path);
-            path_pub_.publish(path);
-            ROS_INFO("Path length: %lu.", path.poses.size());
+//            nav_msgs::Path path;
+            res.plan.header.frame_id = map_frame_;
+            res.plan.header.stamp = ros::Time::now();
+            res.plan.poses.push_back(start);
+            append_path(path_indices, points, normals, res.plan);
+            ROS_INFO("Path of length %lu (%.3f s).", res.plan.poses.size(), t.seconds_elapsed());
+            return true;
         }
 
         void cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
@@ -1771,8 +1826,18 @@ namespace naex
                 return;
             }
             Timer t;
-            plan(start);
-            ROS_INFO("Planning in map: %.3f s.", t.seconds_elapsed());
+            nav_msgs::GetPlanRequest req;
+            req.start = start;
+            req.goal.pose.position.x = std::numeric_limits<double>::quiet_NaN();
+            req.goal.pose.position.y = std::numeric_limits<double>::quiet_NaN();
+            req.goal.pose.position.z = std::numeric_limits<double>::quiet_NaN();
+            nav_msgs::GetPlanResponse res;
+            if (!plan(req, res))
+            {
+                return;
+            }
+            path_pub_.publish(res.plan);
+            ROS_INFO("Planning path of length %lu in map: %.3f s.", res.plan.poses.size(), t.seconds_elapsed());
         }
 
         void find_robots(const std::string& frame, const ros::Time& stamp, std::vector<Elem>& robots, float timeout)
@@ -1836,7 +1901,7 @@ namespace naex
             std::vector<Elem> robots;
             if (filter_robots_)
             {
-                find_robots(cloud->header.frame_id, cloud->header.stamp, robots, 2.f);
+                find_robots(cloud->header.frame_id, cloud->header.stamp, robots, 3.f);
             }
 
             Vec3 origin = transform * Vec3(0., 0., 0.);
@@ -1908,6 +1973,13 @@ namespace naex
         ros::Publisher other_viewpoints_pub_;
         ros::Subscriber cloud_sub_;
 
+        std::vector<ros::Subscriber> input_cloud_subs_;
+        ros::Publisher map_pub_;
+        ros::Timer planning_timer_;
+        ros::ServiceServer get_plan_service_;
+        ros::Timer viewpoints_update_timer_;
+        ros::WallTimer update_params_timer_;
+
         std::string position_name_;
         std::string normal_name_;
 
@@ -1934,8 +2006,6 @@ namespace naex
 
         std::recursive_mutex viewpoints_mutex_;
         float viewpoints_update_freq_;
-        ros::Timer viewpoints_update_timer_;
-        ros::WallTimer update_params_timer_;
         std::vector<Elem> viewpoints_;  // 3xN
         std::vector<Elem> other_viewpoints_;  // 3xN
 //        std::map<std::string, Vec3> last_positions_;
@@ -1945,12 +2015,8 @@ namespace naex
         float planning_freq_;
 
         int queue_size_;
-
-        ros::Publisher map_pub_;
-        std::vector<ros::Subscriber> input_cloud_subs_;
         std::recursive_mutex map_mutex_;
         Map map_;
-        ros::Timer planning_timer_;
     };
 
 }  // namespace naex
