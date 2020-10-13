@@ -57,8 +57,9 @@ namespace naex
         TRAVERSABLE = 0,
         EMPTY = 1,
         UNKNOWN = 2,
-        ACTOR = 3,
-        OBSTACLE = 4
+        EDGE = 3,
+        ACTOR = 4,
+        OBSTACLE = 5
     };
     typedef Buffer<uint8_t> Labels;
 
@@ -322,9 +323,9 @@ namespace naex
                 {
                     if ((ConstVec3Map(points_[v]) - ConstVec3Map(&robots[i])).norm() <= 1.5f * radius_)
                     {
-                        ROS_INFO("[%.1f, %.1f, %.1f] within %.1f m from robot [%.1f, %.1f, %.1f].",
-                                points_[v][0], points_[v][0], points_[v][0], radius_,
-                                robots[i], robots[i + 1],robots[i + 2]);
+//                        ROS_INFO("[%.1f, %.1f, %.1f] within %.1f m from robot [%.1f, %.1f, %.1f].",
+//                                points_[v][0], points_[v][0], points_[v][0], radius_,
+//                                robots[i], robots[i + 1],robots[i + 2]);
                         labels_[v] = ACTOR;
                         break;
                     }
@@ -341,19 +342,24 @@ namespace naex
             // Maximum slope allowed in some direction.
             auto max_slope = std::max(max_pitch_, max_roll_);
             auto min_z = std::cos(max_slope);
-            Index n_traverable = 0, n_empty = 0, n_unknown = 0, n_actor = 0, n_obstacle = 0;
+            Index n_traverable = 0, n_empty = 0, n_unknown = 0, n_edge = 0, n_actor = 0, n_obstacle = 0;
             for (size_t i = 0; i < normals_.rows; ++i)
             {
                 if (labels_[i] == EMPTY)
                 {
                     ++n_empty;
                 }
+                else if (labels_[i] == EDGE)
+                {
+                    ++n_edge;
+                }
                 else if (labels_[i] == ACTOR)
                 {
                     ++n_actor;
                 }
-                else if (std::abs(normals_[i][2]) >= min_z)
+                else if (std::abs(normals_[i][2]) >= min_z && labels_[i] != UNKNOWN)
                 {
+                    // UNKNOWN can be the safety label based on centroid offset.
                     // Approx. horizontal based on normal (with correct orientation).
                     labels_[i] = TRAVERSABLE;
                     ++n_traverable;
@@ -371,13 +377,14 @@ namespace naex
                     ++n_unknown;
                 }
             }
-            ROS_INFO("Normal labels (%lu pts): %u traversable, %u empty, %u unknown, %u actor, %u obstacle (%.3f s).",
-                    normals_.rows, n_traverable, n_empty, n_unknown, n_actor, n_obstacle, t.seconds_elapsed());
+            ROS_INFO("%lu vertex labels: %u traversable, %u empty, %u unknown, %u edge, %u actor, %u obstacle (%.3f s).",
+                    normals_.rows, n_traverable, n_empty, n_unknown, n_edge, n_actor, n_obstacle, t.seconds_elapsed());
         }
 
         void compute_graph_features(size_t min_normal_pts, Elem radius)
         {
             Timer t;
+            const float semicircle_centroid_offset = 4. * radius_ / (3. * M_PI);
             num_normal_pts_.resize(nn_.rows);
             ground_diff_std_.resize(nn_.rows);
 
@@ -436,6 +443,12 @@ namespace naex
                 ground_diff_std_[v0] = std::sqrt(solver.eigenvalues()(0));
 //                ground_diff_min_
 //                ++n_computed;
+                // Inject support label here where we have computed mean.
+//                labels_
+                if ((mean - ConstVec3Map(points_[v0])).norm() > 0.5 * semicircle_centroid_offset)
+                {
+                    labels_[v0] = EDGE;
+                }
             }
             ROS_INFO("Normals recomputed for %lu points from %lu nn within %.2g m: %.3f s.",
                     nn_.rows, nn_.cols, radius_, t.seconds_elapsed());
@@ -451,7 +464,7 @@ namespace naex
             ground_abs_diff_mean_.resize(nn_.rows);
             num_obstacle_pts_.resize(nn_.rows);
             // Maximum slope allowed in some direction.
-            Index n_traverable = 0, n_empty = 0, n_unknown = 0, n_actor = 0, n_obstacle = 0;
+            Index n_traverable = 0, n_empty = 0, n_unknown = 0, n_edge = 0, n_actor = 0, n_obstacle = 0;
 //            ROS_INFO("NN rows: %lu, cols %lu", nn_.rows, nn_.cols);
             for (Vertex v0 = 0; v0 < nn_.rows; ++v0)
             {
@@ -461,7 +474,12 @@ namespace naex
                     ++n_empty;
                     continue;
                 }
-                if (labels_[v0] == ACTOR)
+                else if (labels_[v0] == EDGE)
+                {
+                    ++n_edge;
+                    continue;
+                }
+                else if (labels_[v0] == ACTOR)
                 {
                     ++n_actor;
                     continue;
@@ -548,8 +566,8 @@ namespace naex
                     ++n_obstacle;
                 }
             }
-            ROS_INFO("Final labels (%lu pts): %u traversable, %u empty, %u unknown, %u actor, %u obstacle (%.3f s).",
-                    normals_.rows, n_traverable, n_empty, n_unknown, n_actor, n_obstacle, t.seconds_elapsed());
+            ROS_INFO("%lu final labels: %u traversable, %u empty, %u unknown, %u edge, %u actor, %u obstacle (%.3f s).",
+                    normals_.rows, n_traverable, n_empty, n_unknown, n_edge, n_actor, n_obstacle, t.seconds_elapsed());
         }
 
         void build_index()
@@ -1620,7 +1638,14 @@ namespace naex
                 *it_utility = std::max(self_factor_ * util, util_all);
                 // Prefer frontiers in a specific subspace (e.g. positive x).
                 // TODO: Ensure frame subt is used here.
-                *it_utility /= std::max(-points[i][0] + 9.f, 1.f);
+//                *it_utility /= std::max(-points[i][0] + 9.f, 1.f);
+                if (points[i][0] >= -60. && points[i][0] <= 0.
+                        && points[i][1] >= -30. && points[i][1] <= 30.
+                        && points[i][2] >= -30. && points[i][0] <= 30.)
+                {
+                    Elem dist_from_origin = ConstVec3Map(points[i]).norm();
+                    *it_utility /= (1. + dist_from_origin * dist_from_origin);
+                }
             }
             fill_field("utility", utility.begin(), debug_cloud);
             utility_cloud_pub_.publish(debug_cloud);
@@ -1637,8 +1662,9 @@ namespace naex
             {
                 // *it_final_cost = *it_path_cost - *it_utility;
                 *it_final_cost = std::log(*it_path_cost / (*it_utility + 1e-6f));
-                // Avoid single pose paths and paths with no utility.
-                if (*it_final_cost < goal_cost && *it_path_cost > 0. && *it_utility > 0.)
+
+                // Avoid short paths and paths with no utility.
+                if (*it_final_cost < goal_cost && *it_path_cost > neighborhood_radius_ && *it_utility > 0.)
                 {
                     goal_cost = *it_final_cost;
                     v_goal = v;
