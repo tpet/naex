@@ -19,7 +19,7 @@ from threading import RLock
 from timeit import default_timer as timer
 from visualization_msgs.msg import Marker, MarkerArray
 
-np.set_printoptions(precision=3)
+np.set_printoptions(precision=2)
 
 
 def slots(msg):
@@ -72,6 +72,8 @@ class PathFollower(object):
             assert len(self.max_path_dist) > 0
             self.max_path_dists = self.max_path_dist
             self.max_path_dist = self.max_path_dists.pop()
+        else:
+            self.max_path_dists = []
         self.look_ahead = rospy.get_param('~look_ahead', 1)
         self.max_speed = rospy.get_param('~max_speed', 0.2)          # m/s
         self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)   # rad/s
@@ -294,7 +296,7 @@ class PathFollower(object):
         # Send current clearance.
         self.clearance_pub.publish(msg)
 
-        rospy.loginfo('Publish clearance: %.3f s', timer() - t)
+        rospy.logdebug('Publish clearance: %.3f s', timer() - t)
 
     def control(self, event):
         try:
@@ -306,32 +308,37 @@ class PathFollower(object):
 
                 pose_msg = self.get_robot_pose(self.path_msg.header.frame_id)
                 pose = numpify(pose_msg)
+                rospy.logdebug('Control from robot position: [%.2f, %.2f, %.2f]',
+                               pose[0, 3], pose[1, 3], pose[2, 3])
 
-                look_ahead, i = self.path_x_index.query(pose[:3, 3:].T)
-                look_ahead, i = look_ahead.item(), i.item()
+                # Get the last position on the path within look-ahead radius,
+                # else extend the radius to max. path distance.
+                ind = self.path_x_index.query_ball_point(pose[:3, 3:].T, r=self.look_ahead)[0]
+                if not ind:
+                    rospy.logwarn('Distance to path higher than look ahead %.1f m.', self.look_ahead)
+                    ind = self.path_x_index.query_ball_point(pose[:3, 3:].T, r=self.max_path_dist)[0]
+                if not ind:
+                    rospy.logwarn('Distance to path higher than maximum %.1f m. Stopping.', self.max_path_dist)
+                    self.clear_path()
+                    self.cmd_pub.publish(Twist())
+                    return
+
+                # Ensure minimum look-ahead still applies for long distances
+                # between poses, e.g. starting position far from the next one.
+                # look_ahead, i = self.path_x_index.query(pose[:3, 3:].T)
+                # look_ahead, i = look_ahead.item(), i.item()
                 last = len(self.path_msg.poses) - 1
-
-                # goal = self.path[min(i + self.look_ahead, last), :].T
+                i = max(ind)
                 goal = self.path[i:i+1, :].T
-                # look_ahead = 0.
-                # max look ahead
-                # while i < last:
-                #     i += 1
-                #     new_goal = self.path[i, :].T
-                #     look_ahead += np.linalg.norm(new_goal - goal)
-                #     if look_ahead <= self.look_ahead:
-                #         goal = new_goal
-                #     else:
-                #         break
-                # min look ahead
+                look_ahead = np.linalg.norm(pose[:3, 3:] - goal)
                 while i < last and look_ahead < self.look_ahead:
                     i += 1
                     new_goal = self.path[i:i+1, :].T
                     look_ahead += np.linalg.norm(new_goal - goal)
                     goal = new_goal
 
-                ind = slice(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
-                self.publish_clearance(self.path_msg, ind)
+                show_ind = slice(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
+                self.publish_clearance(self.path_msg, show_ind)
                 if not self.check_pose_clearance(self.path_msg.poses[i].pose):
                     if self.stuck_since is None:
                         self.stuck_since = rospy.Time.now()
@@ -345,7 +352,7 @@ class PathFollower(object):
                                       stuck_duration, self.force_through_after)
                 else:
                     if self.stuck_since:
-                        rospy.logwarn('Path to goal free again.')
+                        rospy.logwarn('Path free again.')
                     self.stuck_since = None
 
                 # Convert the goal into robot frame.
@@ -372,17 +379,18 @@ class PathFollower(object):
                                   dist, self.goal_reached_dist)
                     self.clear_path()
                     self.cmd_pub.publish(Twist())
-                    if len(self.max_path_dists) > 1:
+                    if self.max_path_dists:
                         self.max_path_dist = self.max_path_dists.pop()
                     return
 
                 # Clear path and stop if the path is too far.
-                if dist > self.max_path_dist:
-                    rospy.logwarn('Distance to path %.2f m too high (> %.2f m).',
-                                  dist, self.max_path_dist)
-                    self.clear_path()
-                    self.cmd_pub.publish(Twist())
-                    return
+                # Already part of goal search above.
+                # if dist > self.max_path_dist:
+                #     rospy.logwarn('Distance to path %.2f m too high (> %.2f m).',
+                #                   dist, self.max_path_dist)
+                #     self.clear_path()
+                #     self.cmd_pub.publish(Twist())
+                #     return
             
             if self.allow_backward and np.abs(angle) > np.pi / 2.:
                 angle = np.mod(angle + np.pi / 2., np.pi) - np.pi / 2.
@@ -403,13 +411,15 @@ class PathFollower(object):
             msg.angular.z = angular_rate
             msg.linear.x = speed
             self.cmd_pub.publish(msg)
-            rospy.loginfo('Speed: %.2f m/s, angular rate: %.1f rad/s. (%.3f s)',
-                          speed, angular_rate, timer() - t)
+            rospy.loginfo('Local goal: %s, linear: %.2f m/s, angular: %.1f rad/s (%.3f s).',
+                          local_goal.ravel(), speed, angular_rate, timer() - t)
 
         except tf2_ros.TransformException as ex:
             rospy.logerr('Robot pose lookup failed: %s.', ex)
         except rospy.ROSTimeMovedBackwardsException as ex:
             rospy.logerr('Time moved backward: %s.', ex)
+        except Exception as ex:
+            rospy.logerr('Unknown exception during contol: %s.', ex)
 
 
 if __name__ == '__main__':
