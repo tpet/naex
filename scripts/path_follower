@@ -89,14 +89,17 @@ class PathFollower(object):
         self.clearance_box = np.array(clearance_box)
         self.show_clearance = rospy.get_param('~show_clearance_pos', [-10, 10])
         self.min_points_obstacle = rospy.get_param('~min_points_obstacle', 1)
-        self.force_through_after = rospy.get_param('~force_through_after', 30.)
+        self.force_through_after = rospy.get_param('~force_through_after', 15.)
         self.allow_backward = rospy.get_param('~allow_backward', True)
-        self.stuck_since = None
+        self.backtrack_after = rospy.get_param('~backtrack_after', 30.)
 
         self.path_lock = RLock()
         self.path_msg = None  # Path message
         self.path = None  # n-by-3 path position array
         self.path_x_index = None  # Index of above
+        self.path_traversed = []
+        self.stuck_since = None
+        self.idle_since = None
 
         self.cloud_lock = RLock()
         self.cloud_msg = None
@@ -164,7 +167,7 @@ class PathFollower(object):
         # elif not self.map_frame:
         #     self.map_frame = msg.header.frame_id
         elif self.map_frame and msg.header.frame_id != self.map_frame:
-            rospy.logwarn_once('Map frame %s differs from path frame %s.',
+            rospy.logwarn_once('Map frame %s will be used instead of path frame %s.',
                                self.map_frame, msg.header.frame_id)
 
         # Discard old messages.
@@ -205,15 +208,15 @@ class PathFollower(object):
             rospy.logwarn('Discarding cloud %.1f s > %.1f s old.', age, self.max_age)
             return
 
-        path_frame = None
-        with self.path_lock:
-            if self.path_msg:
-                path_frame = self.path_msg.header.frame_id
-        if not path_frame:
-            path_frame = self.map_frame
-        if not path_frame:
-            rospy.loginfo('Could not obtain path frame, discarding cloud.')
-            return
+        path_frame = self.map_frame
+        # with self.path_lock:
+        #     if self.path_msg:
+        #         path_frame = self.path_msg.header.frame_id
+        # if not path_frame:
+        #     path_frame = self.map_frame
+        # if not path_frame:
+        #     rospy.loginfo('Could not obtain path frame, discarding cloud.')
+        #     return
 
         t = timer()
         cloud = numpify(msg).ravel()
@@ -298,15 +301,37 @@ class PathFollower(object):
 
         rospy.logdebug('Publish clearance: %.3f s', timer() - t)
 
+    def maybe_invoke_backtracking(self):
+        if self.idle_since is None:
+            self.idle_since = rospy.Time.now()
+            return False
+        else:
+            idle_duration = (rospy.Time.now() - self.idle_since).to_sec()
+            if idle_duration >= self.backtrack_after:
+                path = Path()
+                path.header.frame_id = self.map_frame
+                path.header.stamp = rospy.Time.now()
+                path.poses = [PoseStamped(path.header, pose) for pose in reversed(self.path_traversed)]
+                rospy.logwarn('Backtracking due to long inactivity.')
+                self.path_received(path)
+                return True
+            else:
+                return False
+
     def control(self, event):
         try:
             t = timer()
             with self.path_lock:
+                pose_msg = self.get_robot_pose(self.map_frame)
+                self.path_traversed.append(pose_msg)
+                if len(self.path_traversed) > 3000:
+                    self.path_traversed = self.path_traversed[-3000:]
+
                 if self.path_msg is None:
+                    self.maybe_invoke_backtracking()
                     self.cmd_pub.publish(Twist())
                     return
 
-                pose_msg = self.get_robot_pose(self.path_msg.header.frame_id)
                 pose = numpify(pose_msg)
                 rospy.logdebug('Control from robot position: [%.2f, %.2f, %.2f]',
                                pose[0, 3], pose[1, 3], pose[2, 3])
@@ -320,8 +345,11 @@ class PathFollower(object):
                 if not ind:
                     rospy.logwarn('Distance to path higher than maximum %.1f m. Stopping.', self.max_path_dist)
                     self.clear_path()
+                    self.maybe_invoke_backtracking()
                     self.cmd_pub.publish(Twist())
                     return
+
+                self.idle_since = None
 
                 # Ensure minimum look-ahead still applies for long distances
                 # between poses, e.g. starting position far from the next one.
