@@ -1560,7 +1560,7 @@ namespace naex
             traversable.reserve(64);
             for (const auto& v: start_query.nn_buf_)
             {
-                if (g.labels_[v] == TRAVERSABLE)
+                if (g.labels_[v] == TRAVERSABLE || g.labels_[v] == EDGE)
                 {
                     traversable.push_back(v);
                 }
