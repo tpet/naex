@@ -334,7 +334,7 @@ namespace naex
                     }
                 }
             }
-            ROS_INFO("%u / %lu map points empty (%.3f s).",
+            ROS_DEBUG("%u / %lu map points empty (%.3f s).",
                     n_empty, points_.rows, t.seconds_elapsed());
         }
 
@@ -379,7 +379,7 @@ namespace naex
                     ++n_unknown;
                 }
             }
-            ROS_INFO("%lu vertex labels: %u traversable, %u empty, %u unknown, %u edge, %u actor, %u obstacle (%.3f s).",
+            ROS_DEBUG("%lu vertex labels: %u traversable, %u empty, %u unknown, %u edge, %u actor, %u obstacle (%.3f s).",
                     normals_.rows, n_traverable, n_empty, n_unknown, n_edge, n_actor, n_obstacle, t.seconds_elapsed());
         }
 
@@ -452,7 +452,7 @@ namespace naex
                     labels_[v0] = EDGE;
                 }
             }
-            ROS_INFO("Normals recomputed for %lu points from %lu nn within %.2g m: %.3f s.",
+            ROS_DEBUG("Normals recomputed for %lu points from %lu nn within %.2g m: %.3f s.",
                     nn_.rows, nn_.cols, radius_, t.seconds_elapsed());
         }
 
@@ -576,7 +576,7 @@ namespace naex
         {
             Timer t;
             points_index_.buildIndex();
-            ROS_INFO("Building index for %lu pts: %.3f s.", points_.rows, t.seconds_elapsed());
+            ROS_DEBUG("Building index for %lu pts: %.3f s.", points_.rows, t.seconds_elapsed());
         }
 
         void compute_graph(Vertex k, Elem radius)
@@ -595,7 +595,7 @@ namespace naex
             points_index_.knnSearch(points_, nn_, dist_, k, params);
             k_ = k;
             radius_ = radius;
-            ROS_INFO("NN graph (%lu pts): %.3f s.", points_.rows, t.seconds_elapsed());
+            ROS_DEBUG("NN graph (%lu pts): %.3f s.", points_.rows, t.seconds_elapsed());
         }
 
         inline Vertex num_vertices() const
@@ -858,7 +858,7 @@ namespace naex
                 index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(points_, flann::KDTreeSingleIndexParams());
                 index_->buildIndex();
             }
-            ROS_INFO("Updating index: %.3f s.", t.seconds_elapsed());
+            ROS_DEBUG("Updating index: %.3f s.", t.seconds_elapsed());
         }
 
         /** Resize point buffers if necessary, update wrappers and index. */
@@ -887,7 +887,7 @@ namespace naex
         {
             Lock lock(snapshot_mutex_);
             Timer t;
-            ROS_INFO("Merging cloud started. Capacity %lu points.", capacity());
+            ROS_DEBUG("Merging cloud started. Capacity %lu points.", capacity());
             // TODO: Forbid allocation while in use or lock?
             reserve(size() + points.rows);
 
@@ -936,7 +936,7 @@ namespace naex
             Elem nearby_dist = 25.;
             RadiusQuery<Elem> q_nearby(*index_, origin, nearby_dist);
             Index n_nearby = q_nearby.nn_[0].size();
-            ROS_INFO("Found %u points up to %.1f m from sensor (%.3f s).",
+            ROS_DEBUG("Found %u points up to %.1f m from sensor (%.3f s).",
                     n_nearby, nearby_dist, t_dyn.seconds_elapsed());
 //            Buffer<Index> occupied_buf(n_nearby);
 //            Buffer<Index> empty_buf(n_nearby);
@@ -1032,13 +1032,13 @@ namespace naex
                     // Handle this in processing NN.
                 }
             }
-            ROS_INFO("Checking and updating %u static/dynamic points nearby: %.3f s.",
+            ROS_DEBUG("Checking and updating %u static/dynamic points nearby: %.3f s.",
                     n_nearby, t_dyn.seconds_elapsed());
 
             // Find NN distance within current map.
             t.reset();
             Query<Elem> q(*index_, points, 1);
-            ROS_INFO("Input cloud NN searched finished: %.3f s.", t.seconds_elapsed());
+            ROS_DEBUG("Input cloud NN searched finished: %.3f s.", t.seconds_elapsed());
 
             // Merge points with distance to NN higher than threshold.
             // We'll assume that input points also (approx.) comply to the
@@ -1179,6 +1179,14 @@ namespace naex
                 planning_freq_(0.5),
                 queue_size_(5.)
         {
+            // Invalid position invokes exploration mode.
+            last_request_.start.pose.position.x = std::numeric_limits<double>::quiet_NaN();
+            last_request_.start.pose.position.y = std::numeric_limits<double>::quiet_NaN();
+            last_request_.start.pose.position.z = std::numeric_limits<double>::quiet_NaN();
+            last_request_.goal.pose.position.x = std::numeric_limits<double>::quiet_NaN();
+            last_request_.goal.pose.position.y = std::numeric_limits<double>::quiet_NaN();
+            last_request_.goal.pose.position.z = std::numeric_limits<double>::quiet_NaN();
+            last_request_.tolerance = 32.;
             configure();
         }
 
@@ -1285,7 +1293,7 @@ namespace naex
 
         void gather_viewpoints(const ros::TimerEvent& event)
         {
-            ROS_INFO("Gathering viewpoints.");
+            ROS_DEBUG("Gathering viewpoints.");
             if (map_frame_.empty())
             {
                 ROS_ERROR("Could not gather robot positions due to missing map frame.");
@@ -1491,10 +1499,32 @@ namespace naex
         bool plan(nav_msgs::GetPlanRequest& req, nav_msgs::GetPlanResponse& res)
         {
             Timer t;
-            const geometry_msgs::PoseStamped& start = req.start;
-            const geometry_msgs::PoseStamped& goal = req.goal;
-            ROS_INFO("Planning started from [%.1f, %.1f, %.1f].",
-                    start.pose.position.x, start.pose.position.y, start.pose.position.z);
+            ROS_DEBUG("Planning request received. Plan from [%.2f, %.2f, %.2f] to [%.1f, %.2f, %.2f].",
+                    req.start.pose.position.x, req.start.pose.position.y, req.start.pose.position.z,
+                    req.goal.pose.position.x, req.goal.pose.position.y, req.goal.pose.position.z);
+            {
+                Lock lock(last_request_mutex_);
+                last_request_ = req;
+            }
+            geometry_msgs::PoseStamped start = req.start;
+            if (std::isnan(start.pose.position.x)
+                    || std::isnan(start.pose.position.y)
+                    || std::isnan(start.pose.position.z))
+            {
+                try
+                {
+                    auto tf = tf_->lookupTransform(map_frame_, robot_frame_,
+                            ros::Time::now(), ros::Duration(5.));
+                    transform_to_pose(tf, start);
+                }
+                catch (const tf2::TransformException& ex)
+                {
+                    ROS_ERROR("Could not get robot %s position in map %s: %s.",
+                            robot_frame_.c_str(), map_frame_.c_str(), ex.what());
+                    return false;
+                }
+            }
+            const geometry_msgs::PoseStamped goal = req.goal;
 
             FlannMat points;
             FlannMat normals;
@@ -1523,7 +1553,6 @@ namespace naex
             debug_cloud.height = 1;
             debug_cloud.width = points.rows;
 
-            ROS_INFO("Creating graph...");
             // Compute preliminary point labels based on normals.
             Graph g(points, normals, occupied, empty, max_pitch_, max_roll_, uint16_t(empty_ratio_));
             g.k_ = neighborhood_knn_;
@@ -1539,16 +1568,12 @@ namespace naex
             g.build_index();
             g.compute_graph(neighborhood_knn_, neighborhood_radius_);
 //            g.recompute_normals(min_normal_pts_, normal_radius_);
-            ROS_INFO("Graph features...");
             g.compute_graph_features(min_normal_pts_, normal_radius_);
             fill_field("num_normal_pts", g.num_normal_pts_.begin(), debug_cloud);
             fill_field("ground_diff_std", g.ground_diff_std_.begin(), debug_cloud);
-            ROS_INFO("Graph normal labels...");
             g.compute_normal_labels();
             fill_field("normal_label", g.labels_.begin(), debug_cloud);
             normal_label_cloud_pub_.publish(debug_cloud);
-
-            ROS_INFO("Computing final labels...");
             // Adjust points labels using constructed NN graph.
 //            g.compute_final_labels(max_nn_height_diff_);
             g.compute_final_labels(max_nn_height_diff_, clearance_low_, clearance_high_, min_points_obstacle_,
@@ -1562,10 +1587,15 @@ namespace naex
 
             // Use the nearest traversable point to robot as the starting point.
             Vec3 start_position(start.pose.position.x, start.pose.position.y, start.pose.position.z);
-            Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), 32);
+            size_t tol = 32;
+            if (req.tolerance > 0.)
+            {
+                tol = std::min(size_t(req.tolerance), g.points_.rows);
+            }
+            Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), tol);
             // Get traversable points.
             std::vector<Elem> traversable;
-            traversable.reserve(32);
+            traversable.reserve(tol);
             for (const auto& v: start_query.nn_buf_)
             {
                 if (g.labels_[v] == TRAVERSABLE || g.labels_[v] == EDGE)
@@ -1600,31 +1630,6 @@ namespace naex
                     g.points_[v_start][0], g.points_[v_start][1], g.points_[v_start][2],
                     start_position.x(), start_position.y(), start_position.z(), traversable.size());
 
-            Vertex v_goal = INVALID_VERTEX;
-            if (std::isfinite(goal.pose.position.x))
-            {
-                Vec3 goal_position(goal.pose.position.x, goal.pose.position.y, goal.pose.position.z);
-                Query<Elem> goal_query(g.points_index_, flann::Matrix<Elem>(goal_position.data(), 1, 3), 32);
-                // Get traversable points.
-                std::vector<Elem> traversable;
-                traversable.reserve(32);
-                for (const auto& v: start_query.nn_buf_)
-                {
-                    if (g.labels_[v] == TRAVERSABLE || g.labels_[v] == EDGE)
-                    {
-                        traversable.push_back(v);
-                    }
-                }
-                if (traversable.empty())
-                {
-                    ROS_ERROR("No traversable point near goal [%.1f, %.1f, %.1f].",
-                            goal_position.x(), goal_position.y(), goal_position.z());
-                    return false;
-                }
-                // Get random traversable point as start.
-                v_goal = traversable[std::rand() % traversable.size()];
-            }
-
             // TODO: Append starting pose as a special vertex with orientation dependent edges.
             // Note, that for some worlds and robots, the neighborhood must be quite large to get traversable points.
             // See e.g. X1 @ cave_circuit_practice_01.
@@ -1643,16 +1648,61 @@ namespace naex
                     index_map,
                     std::less<Elem>(), boost::closed_plus<Elem>(), std::numeric_limits<Elem>::infinity(), Elem(0.),
                     boost::dijkstra_visitor<boost::null_visitor>());
-            ROS_INFO("Dijkstra (%u pts): %.3f s.", g.num_vertices(), t_dijkstra.seconds_elapsed());
+            ROS_DEBUG("Dijkstra (%u pts): %.3f s.", g.num_vertices(), t_dijkstra.seconds_elapsed());
             fill_field("path_cost", path_costs.begin(), debug_cloud);
             path_cost_cloud_pub_.publish(debug_cloud);
 
-            // If planning for given goal, just backtrack the path.
-            if (v_goal != INVALID_VERTEX)
+            // If planning for given goal, get the closest feasible path.
+            if (std::isfinite(goal.pose.position.x)
+                    && std::isfinite(goal.pose.position.y)
+                    && std::isfinite(goal.pose.position.z))
             {
-                if (std::isinf(path_costs[v_goal]))
+                Vec3 goal_position(goal.pose.position.x, goal.pose.position.y, goal.pose.position.z);
+                Vertex v_goal = INVALID_VERTEX;
+                Elem best_dist = std::numeric_limits<Elem>::infinity();
+                for (Index v = 0; v < path_costs.size(); ++v)
                 {
-                    ROS_INFO("No feasible path found (%.3f s).", t.seconds_elapsed());
+                    if (std::isinf(path_costs[v]))
+                    {
+                        continue;
+                    }
+                    Elem dist = (ConstVec3Map(points[v]) - goal_position).norm();
+                    if (dist < best_dist)
+                    {
+                        v_goal = v;
+                        best_dist = dist;
+                    }
+                }
+//                Vec3 goal_position(goal.pose.position.x, goal.pose.position.y, goal.pose.position.z);
+//                size_t tol = std::min(size_t(req.tolerance), g.points_.rows);
+//                Query<Elem> goal_query(g.points_index_, flann::Matrix<Elem>(goal_position.data(), 1, 3), tol);
+//                // Get traversable points.
+//                std::vector<Elem> traversable;
+//                traversable.reserve(tol);
+//                for (const auto& v: goal_query.nn_buf_)
+//                {
+//                    if (g.labels_[v] == TRAVERSABLE || g.labels_[v] == EDGE)
+//                    {
+//                        traversable.push_back(v);
+//                    }
+//                }
+//                if (traversable.empty())
+//                {
+//                    ROS_ERROR("No traversable point near goal [%.1f, %.1f, %.1f].",
+//                            goal_position.x(), goal_position.y(), goal_position.z());
+//                    return false;
+//                }
+//                // Get random traversable point as goal.
+//                v_goal = traversable[std::rand() % traversable.size()];
+//
+//                ROS_INFO("Planning to [%.1f, %.1f, %.1f], %lu traversable points nearby.",
+//                        g.points_[v_goal][0], g.points_[v_goal][1], g.points_[v_goal][2],
+//                        goal_position.x(), goal_position.y(), goal_position.z(), traversable.size());
+
+                if (v_goal == INVALID_VERTEX)
+                {
+                    ROS_WARN("No feasible path to [%.2f, %.2f, %.2f] found (%.3f s).",
+                            goal_position.x(), goal_position.y(), goal_position.z(), t.seconds_elapsed());
                     return false;
                 }
                 std::vector<Vertex> path_indices;
@@ -1661,7 +1711,7 @@ namespace naex
                 res.plan.header.stamp = ros::Time::now();
                 res.plan.poses.push_back(start);
                 append_path(path_indices, points, normals, res.plan);
-                ROS_INFO("Path of length %lu (%.3f s).", res.plan.poses.size(), t.seconds_elapsed());
+                ROS_DEBUG("Path of length %lu (%.3f s).", res.plan.poses.size(), t.seconds_elapsed());
                 return true;
             }
 
@@ -1702,7 +1752,7 @@ namespace naex
             // Publish final cost cloud.
             Buffer<Elem> final_costs(path_costs.size());
             Elem goal_cost = std::numeric_limits<Elem>::infinity();
-            v_goal = INVALID_VERTEX;
+            Vertex v_goal = INVALID_VERTEX;
             Vertex v = 0;
             auto it_path_cost = path_costs.begin();
             it_utility = utility.begin();
@@ -1741,7 +1791,7 @@ namespace naex
             res.plan.header.stamp = ros::Time::now();
             res.plan.poses.push_back(start);
             append_path(path_indices, points, normals, res.plan);
-            ROS_INFO("Path of length %lu (%.3f s).", res.plan.poses.size(), t.seconds_elapsed());
+            ROS_DEBUG("Path of length %lu (%.3f s).", res.plan.poses.size(), t.seconds_elapsed());
             return true;
         }
 
@@ -1812,32 +1862,21 @@ namespace naex
 
         void planning_timer_cb(const ros::TimerEvent& event)
         {
-            ROS_INFO("Planning callback.");
-            geometry_msgs::PoseStamped start;
-            try
-            {
-                auto tf = tf_->lookupTransform(map_frame_, robot_frame_, ros::Time::now(),
-                        ros::Duration(5.));
-                transform_to_pose(tf, start);
-            }
-            catch (const tf2::TransformException& ex)
-            {
-                ROS_ERROR("Could not get robot position: %s.", ex.what());
-                return;
-            }
+            ROS_DEBUG("Planning timer callback.");
             Timer t;
             nav_msgs::GetPlanRequest req;
-            req.start = start;
-            req.goal.pose.position.x = std::numeric_limits<double>::quiet_NaN();
-            req.goal.pose.position.y = std::numeric_limits<double>::quiet_NaN();
-            req.goal.pose.position.z = std::numeric_limits<double>::quiet_NaN();
+            {
+                Lock lock(last_request_mutex_);
+                req = last_request_;
+            }
             nav_msgs::GetPlanResponse res;
             if (!plan(req, res))
             {
                 return;
             }
             path_pub_.publish(res.plan);
-            ROS_INFO("Planning path of length %lu in map: %.3f s.", res.plan.poses.size(), t.seconds_elapsed());
+            ROS_INFO("Planning robot %s path (%lu poses) in map %s: %.3f s.",
+                    robot_frame_.c_str(), res.plan.poses.size(), map_frame_.c_str(), t.seconds_elapsed());
         }
 
         void find_robots(const std::string& frame, const ros::Time& stamp, std::vector<Elem>& robots, float timeout)
@@ -1945,7 +1984,7 @@ namespace naex
             }
             flann::Matrix<Elem> points(points_buf.begin(), n_added, 3);
             map_.merge(points, origin_mat);
-            ROS_INFO("Input cloud with %u points merged: %.3f s.", n_added, t.seconds_elapsed());
+            ROS_DEBUG("Input cloud with %u points merged: %.3f s.", n_added, t.seconds_elapsed());
 
             sensor_msgs::PointCloud2 map_cloud;
             map_cloud.header.frame_id = map_frame_;
@@ -1977,6 +2016,8 @@ namespace naex
         ros::Publisher map_pub_;
         ros::Timer planning_timer_;
         ros::ServiceServer get_plan_service_;
+        Mutex last_request_mutex_;
+        nav_msgs::GetPlanRequest last_request_;
         ros::Timer viewpoints_update_timer_;
         ros::WallTimer update_params_timer_;
 
@@ -2004,7 +2045,7 @@ namespace naex
         float max_ground_diff_std_;
         float max_ground_abs_diff_mean_;
 
-        std::recursive_mutex viewpoints_mutex_;
+        Mutex viewpoints_mutex_;
         float viewpoints_update_freq_;
         std::vector<Elem> viewpoints_;  // 3xN
         std::vector<Elem> other_viewpoints_;  // 3xN
@@ -2015,7 +2056,7 @@ namespace naex
         float planning_freq_;
 
         int queue_size_;
-        std::recursive_mutex map_mutex_;
+        Mutex map_mutex_;
         Map map_;
     };
 

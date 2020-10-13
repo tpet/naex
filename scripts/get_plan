@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+"""
+Invokes go home plan in planner.
+"""
+from __future__ import absolute_import, division, print_function
+from geometry_msgs.msg import PoseStamped, Point
+from nav_msgs.srv import GetPlan
+import rospy
+from std_msgs.msg import Header
+
+
+if __name__ == '__main__':
+    rospy.init_node('get_plan', log_level=rospy.INFO)
+
+    start_pos = rospy.get_param('~start', [float('nan'), float('nan'), float('nan')])
+    if isinstance(start_pos, str):
+        start_pos = [float(x) for x in start_pos.split(',')]
+    assert(len(start_pos) == 3)
+    rospy.loginfo('Start: [%.2f, %.2f, %.2f]', *start_pos)
+
+    goal_pos = rospy.get_param('~goal', [float('nan'), float('nan'), float('nan')])
+    if isinstance(goal_pos, str):
+        goal_pos = [float(x) for x in goal_pos.split(',')]
+    assert (len(goal_pos) == 3)
+    rospy.loginfo('Goal: [%.2f, %.2f, %.2f]', *goal_pos)
+
+    tolerance = rospy.get_param('~tolerance', 32.)
+
+    verbose = rospy.get_param('~verbose', False)
+
+    rospy.wait_for_service('get_plan')
+    try:
+        get_plan = rospy.ServiceProxy('get_plan', GetPlan)
+        start = PoseStamped()
+        start.pose.position = Point(*start_pos)
+        goal = PoseStamped()
+        goal.pose.position = Point(*goal_pos)
+        res = get_plan(start, goal, tolerance)
+        if verbose:
+            rospy.loginfo(res.plan)
+        else:
+            positions = ['[%.2f, %.2f, %.2f]' % (p.pose.position.x, p.pose.position.y, p.pose.position.z)
+                         for p in res.plan.poses]
+            rospy.loginfo('\n'.join(positions))
+    except rospy.ServiceException as e:
+        rospy.logerr("Service call failed: %s", e)

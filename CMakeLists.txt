@@ -56,6 +56,7 @@ install(
 
 install(
     PROGRAMS
+        scripts/get_plan
         scripts/path_follower
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
