@@ -291,6 +291,7 @@ namespace naex
                 occupied_(occupied),
                 empty_(empty),
                 labels_(points_.rows),
+                num_edge_neighbors_(points_.rows),
                 max_pitch_(max_pitch),
                 max_roll_(max_roll),
                 empty_ratio_(empty_ratio)
@@ -470,6 +471,15 @@ namespace naex
 //            ROS_INFO("NN rows: %lu, cols %lu", nn_.rows, nn_.cols);
             for (Vertex v0 = 0; v0 < nn_.rows; ++v0)
             {
+                num_edge_neighbors_[v0] = 0;
+                for (Vertex j = 0; j < nn_.cols; ++j)
+                {
+                    const auto v1 = nn_[v0][j];
+                    if (labels_[v1] == EDGE)
+                    {
+                        ++num_edge_neighbors_[v0];
+                    }
+                }
                 // Disregard empty points.
                 if (labels_[v0] == EMPTY)
                 {
@@ -690,6 +700,7 @@ namespace naex
         Buffer<Elem> ground_abs_diff_mean_;
         Buffer<uint8_t> num_obstacle_pts_;
         Buffer<uint8_t> labels_;
+        Buffer<uint8_t> num_edge_neighbors_;
 
         // NN and distances
         int k_;
@@ -1735,6 +1746,8 @@ namespace naex
                 const auto util = std::min(std::max(vp_dist - min_vp_distance_, 0.f), max_vp_distance_) / max_vp_distance_;
                 const auto util_all = std::min(std::max(vp_dist_all - min_vp_distance_, 0.f), max_vp_distance_) / max_vp_distance_;
                 *it_utility = std::max(self_factor_ * util, util_all);
+                // Multiply with edge neighbors.
+                *it_utility *= (1 + g.num_edge_neighbors_[i]);
                 // Prefer frontiers in a specific subspace (e.g. positive x).
                 // TODO: Ensure frame subt is used here.
 //                *it_utility /= std::max(-points[i][0] + 9.f, 1.f);
