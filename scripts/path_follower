@@ -74,9 +74,10 @@ class PathFollower(object):
             self.max_path_dist = self.max_path_dists.pop()
         else:
             self.max_path_dists = []
-        self.look_ahead = rospy.get_param('~look_ahead', 1)
-        self.max_speed = rospy.get_param('~max_speed', 0.2)          # m/s
-        self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)   # rad/s
+        self.look_ahead = rospy.get_param('~look_ahead', 1.)
+        self.max_speed = rospy.get_param('~max_speed', 1.0)  # m/s
+        self.max_force_through_speed = rospy.get_param('~max_force_through_speed', .25)
+        self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)  # rad/s
         self.keep_path = rospy.get_param('~keep_path', 30.0)
         # Keep only points inside a box for clearance check.
         keep_cloud_box = rospy.get_param('~keep_cloud_box', [[-4.0, 4.0],
@@ -433,7 +434,8 @@ class PathFollower(object):
             # Linear velocity
             # p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
             p_dist = 1.5 * max(np.cos(3. * angle), 0.)
-            speed = vel_sign * np.clip(p_dist * dist, 0., self.max_speed)
+            max_speed = self.max_speed if self.stuck_since is None else self.max_force_through_speed
+            speed = vel_sign * np.clip(p_dist * dist, 0., max_speed)
 
             msg = Twist()
             msg.angular.z = angular_rate

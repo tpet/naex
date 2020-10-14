@@ -384,7 +384,7 @@ namespace naex
                     normals_.rows, n_traverable, n_empty, n_unknown, n_edge, n_actor, n_obstacle, t.seconds_elapsed());
         }
 
-        void compute_graph_features(size_t min_normal_pts, Elem radius)
+        void compute_graph_features(size_t min_normal_pts, Elem radius, Elem edge_min_rel_centroid_offset)
         {
             Timer t;
             const float semicircle_centroid_offset = 4. * radius_ / (3. * M_PI);
@@ -432,7 +432,7 @@ namespace naex
                     }
                     if (dist_[v0][j] <= radius)
                     {
-                        auto pc = (ConstVec3Map(points_[v1]) - mean);
+                        Vec3 pc = (ConstVec3Map(points_[v1]) - mean);
                         cov += pc * pc.transpose();
                     }
                 }
@@ -448,7 +448,8 @@ namespace naex
 //                ++n_computed;
                 // Inject support label here where we have computed mean.
 //                labels_
-                if ((mean - ConstVec3Map(points_[v0])).norm() > 0.75 * semicircle_centroid_offset)
+                if ((mean - ConstVec3Map(points_[v0])).norm()
+                        > edge_min_rel_centroid_offset * semicircle_centroid_offset)
                 {
                     labels_[v0] = EDGE;
                 }
@@ -459,7 +460,8 @@ namespace naex
 
         /** Traversability based on NN graph. */
         void compute_final_labels(Elem max_nn_height_diff_, Elem clearance_low, Elem clearance_high,
-                Vertex min_points_obstacle, Elem max_ground_diff_std, Elem max_ground_abs_diff_mean)
+                Vertex min_points_obstacle, Elem max_ground_diff_std, Elem max_ground_abs_diff_mean,
+                Elem min_dist_to_obstacle)
         {
             Timer t;
             ground_diff_min_.resize(nn_.rows);
@@ -519,7 +521,7 @@ namespace naex
                         continue;
                     }
                     // Avoid driving near obstacles.
-                    if (labels_[v0] == TRAVERSABLE && labels_[v1] == OBSTACLE && dist_[v0][j] <= radius_)
+                    if (labels_[v0] == TRAVERSABLE && labels_[v1] == OBSTACLE && dist_[v0][j] <= min_dist_to_obstacle)
                     {
                         labels_[v0] = UNKNOWN;
                         ++n_unknown;
@@ -1183,6 +1185,8 @@ namespace naex
                 min_points_obstacle_(3),
                 max_ground_diff_std_(0.1),
                 max_ground_abs_diff_mean_(0.1),
+                edge_min_centroid_offset_(0.75),
+                min_dist_to_obstacle_(0.7),
                 other_viewpoints_(),
                 min_vp_distance_(1.5),
                 max_vp_distance_(5.),
@@ -1209,6 +1213,8 @@ namespace naex
             pnh_.param("min_points_obstacle", min_points_obstacle_, min_points_obstacle_);
             pnh_.param("max_ground_diff_std", max_ground_diff_std_, max_ground_diff_std_);
             pnh_.param("max_ground_abs_diff_mean", max_ground_abs_diff_mean_, max_ground_abs_diff_mean_);
+            pnh_.param("edge_min_centroid_offset", edge_min_centroid_offset_, edge_min_centroid_offset_);
+            pnh_.param("min_dist_to_obstacle", min_dist_to_obstacle_, min_dist_to_obstacle_);
         }
 
         void configure()
@@ -1232,6 +1238,8 @@ namespace naex
             pnh_.param("min_points_obstacle", min_points_obstacle_, min_points_obstacle_);
             pnh_.param("max_ground_diff_std", max_ground_diff_std_, max_ground_diff_std_);
             pnh_.param("max_ground_abs_diff_mean", max_ground_abs_diff_mean_, max_ground_abs_diff_mean_);
+            pnh_.param("edge_min_centroid_offset", edge_min_centroid_offset_, edge_min_centroid_offset_);
+            pnh_.param("min_dist_to_obstacle", min_dist_to_obstacle_, min_dist_to_obstacle_);
 
             pnh_.param("viewpoints_update_freq", viewpoints_update_freq_, viewpoints_update_freq_);
             pnh_.param("min_vp_distance", min_vp_distance_, min_vp_distance_);
@@ -1579,7 +1587,7 @@ namespace naex
             g.build_index();
             g.compute_graph(neighborhood_knn_, neighborhood_radius_);
 //            g.recompute_normals(min_normal_pts_, normal_radius_);
-            g.compute_graph_features(min_normal_pts_, normal_radius_);
+            g.compute_graph_features(min_normal_pts_, normal_radius_, edge_min_centroid_offset_);
             fill_field("num_normal_pts", g.num_normal_pts_.begin(), debug_cloud);
             fill_field("ground_diff_std", g.ground_diff_std_.begin(), debug_cloud);
             g.compute_normal_labels();
@@ -1588,7 +1596,7 @@ namespace naex
             // Adjust points labels using constructed NN graph.
 //            g.compute_final_labels(max_nn_height_diff_);
             g.compute_final_labels(max_nn_height_diff_, clearance_low_, clearance_high_, min_points_obstacle_,
-                    max_ground_diff_std_, max_ground_abs_diff_mean_);
+                    max_ground_diff_std_, max_ground_abs_diff_mean_, min_dist_to_obstacle_);
             fill_field("ground_diff_min", g.ground_diff_min_.begin(), debug_cloud);
             fill_field("ground_diff_max", g.ground_diff_max_.begin(), debug_cloud);
             fill_field("ground_abs_diff_mean", g.ground_abs_diff_mean_.begin(), debug_cloud);
@@ -2057,6 +2065,8 @@ namespace naex
         float min_points_obstacle_;
         float max_ground_diff_std_;
         float max_ground_abs_diff_mean_;
+        float edge_min_centroid_offset_;
+        float min_dist_to_obstacle_;
 
         Mutex viewpoints_mutex_;
         float viewpoints_update_freq_;
