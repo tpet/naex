@@ -1192,6 +1192,7 @@ namespace naex
                 max_vp_distance_(5.),
                 self_factor_(0.25),
                 planning_freq_(0.5),
+                initialized_(false),
                 queue_size_(5.)
         {
             // Invalid position invokes exploration mode.
@@ -1203,6 +1204,11 @@ namespace naex
             last_request_.goal.pose.position.z = std::numeric_limits<double>::quiet_NaN();
             last_request_.tolerance = 32.;
             configure();
+            ROS_INFO("Waiting for other robots...");
+            std::vector<Elem> robots;
+            find_robots(map_frame_, ros::Time(), robots, 30.f);
+            Lock lock(initialized_mutex_);
+            initialized_ = true;
         }
 
         void update_params(const ros::WallTimerEvent& evt)
@@ -1518,6 +1524,14 @@ namespace naex
         bool plan(nav_msgs::GetPlanRequest& req, nav_msgs::GetPlanResponse& res)
         {
             Timer t;
+            {
+                Lock lock(initialized_mutex_);
+                if (!initialized_)
+                {
+                    ROS_WARN("Won't plan. Waiting for other robots...");
+                    return false;
+                }
+            }
             ROS_DEBUG("Planning request received. Plan from [%.2f, %.2f, %.2f] to [%.1f, %.2f, %.2f].",
                     req.start.pose.position.x, req.start.pose.position.y, req.start.pose.position.z,
                     req.goal.pose.position.x, req.goal.pose.position.y, req.goal.pose.position.z);
@@ -1932,6 +1946,14 @@ namespace naex
 
         void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
         {
+            {
+                Lock lock(initialized_mutex_);
+                if (!initialized_)
+                {
+                    ROS_WARN("Discarding input cloud. Waiting for other robots...");
+                    return;
+                }
+            }
             const Index n_pts = cloud->height * cloud->width;
             ROS_DEBUG("Input cloud from %s with %u points received.",
                     cloud->header.frame_id.c_str(), n_pts);
@@ -2078,6 +2100,9 @@ namespace naex
         float max_vp_distance_;
         float self_factor_;
         float planning_freq_;
+
+        Mutex initialized_mutex_;
+        bool initialized_;
 
         int queue_size_;
         Mutex map_mutex_;
