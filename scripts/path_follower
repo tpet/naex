@@ -187,7 +187,7 @@ class PathFollower(object):
         with self.path_lock:
             if self.path_msg and self.keep_path > 0.:
                 age = (rospy.Time.now() - self.path_msg.header.stamp).to_sec()
-                if age <= self.keep_path:
+                if age <= self.keep_path and self.stuck_since is None:
                     rospy.loginfo('Keeping previous path (%.1f s <= %.1f s).', age, self.keep_path)
                     return
 
