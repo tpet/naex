@@ -1764,7 +1764,7 @@ namespace naex
                         && points[i][2] >= -30. && points[i][0] <= 30.)
                 {
                     Elem dist_from_origin = ConstVec3Map(points[i]).norm();
-                    *it_utility /= (1. + dist_from_origin * dist_from_origin);
+                    *it_utility /= (1. + std::pow(dist_from_origin, 4.f));
                 }
             }
             fill_field("utility", utility.begin(), debug_cloud);
