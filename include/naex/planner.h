@@ -1781,7 +1781,8 @@ namespace naex
             for (; it_path_cost != path_costs.end(); ++v, ++it_path_cost, ++it_utility, ++it_final_cost)
             {
                 // *it_final_cost = *it_path_cost - *it_utility;
-                *it_final_cost = std::log(*it_path_cost / (*it_utility + 1e-6f));
+//                *it_final_cost = std::log(*it_path_cost / (*it_utility + 1e-6f));
+                *it_final_cost = *it_path_cost / (*it_utility + 1e-6f);
 
                 // Avoid short paths and paths with no utility.
                 if (*it_final_cost < goal_cost && *it_path_cost > neighborhood_radius_ && *it_utility > 0.)
