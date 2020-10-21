@@ -1,0 +1,207 @@
+#!/usr/bin/env python
+from geometry_msgs.msg import Pose, Transform, TransformStamped
+from nav_msgs.msg import Odometry
+import numpy as np
+from ros_numpy import msgify, numpify
+import rospy
+from scipy.linalg import expm
+from sensor_msgs.msg import Imu, PointCloud2
+import torch
+import tf2_ros
+from threading import RLock
+
+
+def cross_product_matrix(v, dtype=np.float32):
+    assert len(v) == 3
+    mat = np.array([[   0., -v[2],  v[1]],
+                    [ v[2],    0., -v[0]],
+                    [-v[1],  v[0],    0.]], dtype=dtype)
+    return mat
+
+
+def projective_icp(x, normal_x, y, normal_y, tf=np.eye(4)):
+    pass
+
+
+def preprocess_cloud(cloud):
+    # assert isinstance(msg, PointCloud2)
+    # cloud = numpify(msg)
+    x = np.stack([cloud[f] for f in ('x', 'y', 'z')])
+    rospy.loginfo('Cloud shape: %s' % x.shape)
+    normal_x = np.cross(x[1:, :-1] - x[:-1, :-1], x[:-1, 1:] - x[:-1, :-1])
+    normal_x /= np.linalg.norm(normal_x, axis=-1, keepdims=True)
+    return x, normal_x
+
+
+class LidarInertialOdom(object):
+    """Lidar-inertial odometry node.
+
+    Subscribes IMU and PointCloud2 messages and publishes Odometry and TFMessage
+    messages.
+
+    IMU measurement (assumes valid orientation) is used to estimate initial
+    cloud orientation, constant (previous) velocity gives the translation
+    estimate. Projective point-to-plane ICP is used to align incoming cloud
+    to a previous cloud, a keyframe, or a map, starting from the initial
+    transform estimate.
+
+    Basic principle is similar to [1]. The correspondence weights are learned
+    instead of being given by Huber weighting.
+
+    [1] Behley, J. & Stachniss, C.
+        Efficient Surfel-Based SLAM using 3D Laser Range Data in Urban Environments
+        Robotics: Science and System XIV, 2018
+    """
+
+    def __init__(self):
+        self.odom_frame = rospy.get_param('~odom_frame', 'odom')
+        self.robot_frame = rospy.get_param('~robot_frame', 'base_link')
+        self.imu_frame = rospy.get_param('~imu_frame', 'imu')
+        self.lidar_frame = rospy.get_param('~lidar_frame', 'lidar')
+
+        self.tf_pub = tf2_ros.TransformBroadcaster()
+        self.tf = tf2_ros.Buffer(rospy.Duration.from_sec(5.0))
+        self.tf_sub = tf2_ros.TransformListener(self.tf)
+
+        self.imu_to_robot = None
+        self.lidar_to_robot = None
+        self.wait_for_transforms()
+
+        self.feature_cloud_pub = rospy.Publisher('feature_cloud', PointCloud2, queue_size=5)
+        self.odom_pub = rospy.Publisher('odom', Odometry, queue_size=5)
+
+        self.imu_lock = RLock()
+        self.imu_tf = tf2_ros.Buffer(rospy.Duration.from_sec(5.))
+        self.prev_imu_msg = None
+        self.imu_sub = rospy.Subscriber('imu', Imu, self.imu_data_received, queue_size=5)
+
+        self.cloud_lock = RLock()
+        self.clouds = []
+        self.prev_cloud_msg = None
+        self.prev_x = None
+        self.prev_normal_x = None
+        self.prev_lidar_vel = np.zeros((3, 1))
+        self.prev_robot_to_odom = np.eye(4)
+        # self.prev_step_tf = np.eye(4)
+        self.cloud_sub = rospy.Subscriber('cloud', PointCloud2, self.cloud_received, queue_size=5)
+
+    def wait_for_transforms(self):
+        start = rospy.Time.now()
+        last = rospy.Time()
+        timeout = rospy.Duration.from_sec(3.)
+        while True:
+            try:
+                self.imu_to_robot = self.tf.lookup_transform(self.robot_frame, self.imu_frame, last, timeout)
+            except tf2_ros.TransformException as ex:
+                rospy.loginfo('Could not transform %s to %s: %s.', self.imu_frame, self.robot_frame, ex)
+            try:
+                self.lidar_to_robot = self.tf.lookup_transform(self.robot_frame, self.lidar_frame, last, timeout)
+            except tf2_ros.TransformException as ex:
+                rospy.loginfo('Could not transform %s to %s: %s.', self.imu_frame, self.robot_frame, ex)
+            waiting = (rospy.Time.now() - start).to_sec()
+            if self.imu_to_robot and self.lidar_to_robot:
+                break
+            if waiting > 3.:
+                rospy.logwarn('Waiting for transforms (%.1f s)...', waiting)
+        rospy.loginfo('Got sensor transforms (after %.1f s).', waiting)
+
+    def imu_data_received(self, msg):
+        assert isinstance(msg, Imu)
+        # TODO: Integrate angular velocities if orientation is not provided.
+        assert msg.orientation_covariance[0] != -1.
+        rospy.loginfo('IMU data received.')
+
+        if self.prev_imu_msg is not None and self.prev_imu_msg.header.stamp >= msg.header.stamp:
+            rospy.logwarn('Skipping old IMU message.')
+        self.prev_imu_msg = msg
+
+        # Insert IMU orientation in the buffer.
+        tf = TransformStamped()
+        tf.header.frame_id = 'parent'
+        tf.header.stamp = msg.header.stamp
+        tf.child_frame_id = msg.header.frame_id
+        tf.transform.rotation = msg.orientation
+        # We assume transformation between base_link, lidar, and imu are all static,
+        # so that only relative orientation between IMU measurements can be used.
+        self.imu_tf.set_transform(tf)
+
+    def cloud_received(self, msg):
+        assert(isinstance(msg, PointCloud2))
+        rospy.loginfo('Cloud received with %i points.', msg.height * msg.width)
+
+        with self.imu_lock:
+            imu_frame = self.prev_imu_msg.header.frame_id
+
+        with self.cloud_lock:
+            if self.prev_cloud_msg is not None and self.prev_cloud_msg.header.stamp >= msg.header.stamp:
+                rospy.logwarn('Skipping old point cloud message.')
+            # self.prev_cloud_msg = msg
+
+            # Preprocess incoming cloud - estimate normals using forward
+            # differences.
+            cloud = numpify(msg)
+            # x = np.stack([cloud[f] for f in ('x', 'y', 'z')], axis=-1)
+            # rospy.loginfo('Cloud shape: %s', x.shape)
+            # normal_x = np.cross(x[1:, :-1] - x[:-1, :-1], x[:-1, 1:] - x[:-1, :-1])
+            # normal_x /= np.linalg.norm(normal_x, axis=-1, keepdims=True)
+            x, normal_x = preprocess_cloud(cloud)
+            # TODO: Disregard invalid points and normals.
+            cloud['nx'] = normal_x[..., 0]
+            cloud['ny'] = normal_x[..., 1]
+            cloud['nz'] = normal_x[..., 2]
+            # preprocessed_cloud_
+            cloud_msg = msgify(PointCloud2, cloud)
+            self.feature_cloud_pub.publish(cloud_msg)
+
+            # TODO: Apply IMU orientation (and constant velocity) in robot frame.
+            # Get relative IMU orientation.
+            timeout = rospy.Duration.from_sec(1.)
+            try:
+                tf = self.imu_tf.lookup_transform_full(imu_frame, self.prev_cloud_msg.header.stamp,
+                                                           imu_frame, msg.header.stamp, 'parent', timeout)
+            except tf2_ros.TransformException as ex:
+                rospy.logwarn('Could not get relative cloud orientation from IMU: %s.', ex)
+                return
+            imu_step = numpify(tf.transform)
+
+            # Compute predictive step from above and constant velocity for translation.
+            dt = (msg.header.stamp - self.prev_cloud_msg.header.stamp).to_sec()
+            rospy.loginfo('Odometry time step: %.2f s', dt)
+            # model_tf = self.prev_step_tf.copy()
+            lidar_step_est = np.eye(4)
+            lidar_step_est[:3, :3] = imu_step[:3, :3]
+            lidar_step_est[:3, 3:] = dt * self.prev_lidar_vel
+
+            # Iterate projective point-to-plane ICP and compute odometry.
+            lidar_step = projective_icp(x, normal_x, self.prev_x, self.prev_normal_x, lidar_step_est)
+            rospy.loginfo('Lidar step:\n%s', lidar_step)
+            robot_to_odom = self.prev_robot_to_odom.dot(self.lidar_to_robot).dot(lidar_step)
+            rospy.loginfo('Odometry:\n%s', robot_to_odom)
+
+            # Publish tf and odometry messages.
+            tf_msg = TransformStamped()
+            tf_msg.header.frame_id = self.odom_frame
+            tf_msg.header.stamp = msg.header.stamp
+            tf_msg.child_frame_id = self.robot_frame
+            tf_msg.transform = msgify(Transform, robot_to_odom)
+            self.tf_pub.sendTransform(tf_msg)
+
+            odom_msg = Odometry()
+            odom_msg.header.frame_id = self.odom_frame
+            odom_msg.header.stamp = msg.header.stamp
+            odom_msg.child_frame_id = self.robot_frame
+            odom_msg.pose.pose = msgify(Pose, robot_to_odom)
+            self.odom_pub.publish(odom_msg)
+
+            # Remember current estimates for next step.
+            self.prev_lidar_vel = lidar_step[:3, 3:] / dt
+            # TODO: Normalize transform time to time.
+            self.prev_robot_to_odom = robot_to_odom
+
+
+if __name__ == "__main__":
+    node = LidarInertialOdom()
+    try:
+        rospy.spin()
+    except rospy.ROSInterruptException as ex:
+        rospy.logwarn('Interrupted.')
