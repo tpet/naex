@@ -2,6 +2,36 @@
 // Created by petrito1 on 10/1/20.
 //
 
+// TODO: LO-RANSAC planes instead LS fit? Extra two points to get model.
+// TODO: Don't center mean for normal computation.
+// TODO: Incremental index updates.
+// TODO: Removing dynamic points from index.
+// TODO: Incremental NN updates.
+
+// Input processing:
+//   Voxel filter (maybe outside)
+//   Surface reconstruction (normals from forward diffs)? (maybe not needed)
+// Identify dynamic points for removal.
+//   Projection based:
+//     Project points into input frame.
+//     Check check plane of nearest neighbors or interpolate in inverse depth.
+//   NN based:
+//     Find directional NN.
+//     Check check plane of nearest neighbors or interpolate in inverse depth.
+//   Limit incidence surface angle (surface skew).
+//   Mark occluding map points as empty. (MAP WRITE)
+// Update map
+//   Map NN search for input query (INDEX READ)
+//     Identify points to add.
+//     Where the NN should be updated?
+//   Copy identified points.
+//   Add identified points (above) to index. (INDEX WRITE)
+//   Recompute affected NN (a set from NN search) and corresponding features. (MAP WRITE)
+
+// NB: Normal radius should be smaller than robot radius so that normals are not
+// skewed in traversable points.
+
+
 #ifndef NAEX_PLANNER_H
 #define NAEX_PLANNER_H
 
