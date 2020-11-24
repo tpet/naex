@@ -2,36 +2,6 @@
 // Created by petrito1 on 10/1/20.
 //
 
-// TODO: LO-RANSAC planes instead LS fit? Extra two points to get model.
-// TODO: Don't center mean for normal computation.
-// TODO: Incremental index updates.
-// TODO: Removing dynamic points from index.
-// TODO: Incremental NN updates.
-
-// Input processing:
-//   Voxel filter (maybe outside)
-//   Surface reconstruction (normals from forward diffs)? (maybe not needed)
-// Identify dynamic points for removal.
-//   Projection based:
-//     Project points into input frame.
-//     Check check plane of nearest neighbors or interpolate in inverse depth.
-//   NN based:
-//     Find directional NN.
-//     Check check plane of nearest neighbors or interpolate in inverse depth.
-//   Limit incidence surface angle (surface skew).
-//   Mark occluding map points as empty. (MAP WRITE)
-// Update map
-//   Map NN search for input query (INDEX READ)
-//     Identify points to add.
-//     Where the NN should be updated?
-//   Copy identified points.
-//   Add identified points (above) to index. (INDEX WRITE)
-//   Recompute affected NN (a set from NN search) and corresponding features. (MAP WRITE)
-
-// NB: Normal radius should be smaller than robot radius so that normals are not
-// skewed in traversable points.
-
-
 #ifndef NAEX_PLANNER_H
 #define NAEX_PLANNER_H
 
@@ -43,6 +13,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <mutex>
+#include <naex/array.h>
 #include <naex/buffer.h>
 #include <naex/clouds.h>
 #include <naex/iterators.h>
@@ -942,6 +913,14 @@ namespace naex
         std::shared_ptr<flann::Index<flann::L2_3D<Elem>>> index_;
     };
 
+class NotInitialized: public std::runtime_error
+{
+public:
+    NotInitialized(const char* what):
+            std::runtime_error(what)
+    {}
+};
+
     class Planner
     {
     public:
@@ -1460,6 +1439,7 @@ namespace naex
             boost::typed_identity_property_map<Vertex> index_map;
 
             Timer t_dijkstra;
+            // TODO: Stop via exception if needed.
             // boost::dijkstra_shortest_paths(g, ::Graph::V(0),
             boost::dijkstra_shortest_paths_no_color_map(g, v_start,
 //                    &predecessor[0], &path_costs[0], edge_costs,
@@ -1730,16 +1710,33 @@ namespace naex
             }
         }
 
+        void check_initialized()
+        {
+            Lock lock(initialized_mutex_);
+            if (!initialized_)
+            {
+                throw NotInitialized("Not initialized. Waiting for other robots.");
+            }
+        }
+
+        void filter_out_robots(
+            const sensor_msgs::PointCloud2::ConstPtr& cloud,
+            std::vector<uint8_t> &keep)
+        {
+
+        }
+
         void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
         {
-            {
-                Lock lock(initialized_mutex_);
-                if (!initialized_)
-                {
-                    ROS_WARN("Discarding input cloud. Waiting for other robots...");
-                    return;
-                }
-            }
+//            {
+//                Lock lock(initialized_mutex_);
+//                if (!initialized_)
+//                {
+//                    ROS_WARN("Discarding input cloud. Waiting for other robots...");
+//                    return;
+//                }
+//            }
+            check_initialized();
             const Index n_pts = cloud->height * cloud->width;
             ROS_DEBUG("Input cloud from %s with %u points received.",
                     cloud->header.frame_id.c_str(), n_pts);
@@ -1750,7 +1747,7 @@ namespace naex
             {
                 tf = tf_->lookupTransform(map_frame_, cloud->header.frame_id, cloud->header.stamp, timeout);
             }
-            catch (const tf2::TransformException& ex)
+            catch (const tf2::TransformException &ex)
             {
                 ROS_ERROR("Could not transform input cloud from %s into map %s: %s.",
                         cloud->header.frame_id.c_str(), map_frame_.c_str(), ex.what());
