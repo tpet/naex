@@ -2,6 +2,7 @@
 #ifndef NAEX_CLOUDS_H
 #define NAEX_CLOUDS_H
 
+#include <cmath>
 #include <naex/types.h>
 #include <sensor_msgs/point_cloud2_iterator.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -132,7 +133,7 @@ namespace naex
         }
     }
 
-    void reset_fields(sensor_msgs::PointCloud2& cloud)
+    void reset_fields(sensor_msgs::PointCloud2 &cloud)
     {
         cloud.fields.clear();
         cloud.point_step = 0;
@@ -140,9 +141,9 @@ namespace naex
 
     template<typename T>
     void append_field(
-            const std::string& name,
-            uint32_t count,
-            sensor_msgs::PointCloud2& cloud)
+        const std::string& name,
+        const uint32_t count,
+        sensor_msgs::PointCloud2 &cloud)
     {
         sensor_msgs::PointField field;
         field.name = name;
@@ -282,6 +283,237 @@ namespace naex
             x_it[1] = points[i][1];
             x_it[2] = points[i][2];
         }
+    }
+
+    template<typename T>
+    flann::Matrix<T> flann_matrix_view(
+        sensor_msgs::PointCloud2& cloud,
+        const std::string& field,
+        const uint32_t count = 1)
+    {
+        sensor_msgs::PointCloud2Iterator<T> it(cloud, field);
+        return flann::Matrix<T>(&it[0], cloud.height * cloud.width, count, cloud.point_step);
+    }
+
+    template<typename T>
+    flann::Matrix<T> const_flann_matrix_view(
+        const sensor_msgs::PointCloud2& cloud,
+        const std::string& field,
+        const uint32_t count = 1)
+    {
+        sensor_msgs::PointCloud2ConstIterator<T> it(cloud, field);
+        return flann::Matrix<T>(&it[0], cloud.height * cloud.width, count, cloud.point_step);
+    }
+
+    class SphericalProjection
+    {
+    public:
+        SphericalProjection()
+        {}
+
+//        SphericalProjection(float azimuth[2], float elevation[2], uint32_t size[2]):
+//            azimuth_{azimuth[0], azimuth[1]},
+//            elevation_{elevation[0], elevation[1]},
+//            size_{size[0], size[1]}
+//        {
+        SphericalProjection(float azimuth_start,
+                            float azimuth_step,
+                            float elevation_start,
+                            float elevation_step,
+                            uint32_t height,
+                            uint32_t width):
+            azimuth_start_(azimuth_start),
+            azimuth_step_(azimuth_step),
+            elevation_start_(elevation_start),
+            elevation_step_(elevation_step),
+            height_(height),
+            width_(width)
+        {}
+
+        bool check(sensor_msgs::PointCloud2& cloud)
+        {
+//            assert(size_[0] == cloud.height);
+//            assert(size_[1] == cloud.width);
+            assert(height_ == cloud.height);
+            assert(width_ == cloud.width);
+            sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x");
+            for (uint32_t i = 0; i < height_; ++i)
+            {
+                for (uint32_t j = 0; j < width_; ++j, ++x_it)
+                {
+                    auto az = azimuth(x_it[0], x_it[1]);
+                    auto el = elevation(x_it[0], x_it[1], x_it[2]);
+                    assert(std::abs(az - (azimuth_start_ + j * azimuth_step_)) <= 1e-3);
+                    assert(std::abs(el - (elevation_start_ + i * elevation_step_)) <= 1e-3);
+                }
+            }
+            return true;
+        }
+
+        bool fit(sensor_msgs::PointCloud2& cloud)
+        {
+            assert(cloud.height >= 1);
+            assert(cloud.width >= 1);
+            height_ = cloud.height;
+            width_ = cloud.width;
+            sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x");
+            // Find start and step values for azimuth and elevation.
+
+            // Iterate rows for azimuth and cols for elevation to find first
+            // valid step value.
+//            uint32_t prev_i = std::numeric_limits<uint32_t>::max();
+//            float prev_az = std::numeric_limits<float>::quiet_NaN();
+//            for (uint32_t i = 0; i < size_[0]; ++i)
+//            {
+//                for (uint32_t j = 0; j < size_[1]; ++j)
+//                {
+////                    Vec3Map x(&x_it[0]);
+//                    if (std::isfinite(x_it[0]))
+//                    {
+//                        // Valid input point.
+//                        auto az = azimuth(x_it[0], x_it[1]);
+//                        if (std::isnan(prev_az))
+//                        {
+//                            prev_i = i;
+//                            prev_az = az;
+//                        }
+//                        else if (prev_i != i)
+//                        {
+//                            azimuth_step_ = (az - prev_az) / (i - prev_i);
+//                            goto azimuth_done;
+//                        }
+//                    }
+//                }
+//            }
+
+            float ref_az = std::numeric_limits<float>::quiet_NaN();
+            uint32_t ref_az_j = std::numeric_limits<uint32_t>::max();
+
+            float ref_el = std::numeric_limits<float>::quiet_NaN();
+            uint32_t ref_el_i = std::numeric_limits<uint32_t>::max();
+
+            azimuth_step_ = std::numeric_limits<float>::quiet_NaN();
+            elevation_step_ = std::numeric_limits<float>::quiet_NaN();
+
+            for (uint32_t i = 0; i < height_; ++i)
+            {
+                for (uint32_t j = 0; j < width_; ++j, ++x_it)
+                {
+                    if (std::isfinite(x_it[0]))
+                    {
+                        // We have a valid input point.
+                        auto az = azimuth(x_it[0], x_it[1]);
+                        auto el = elevation(x_it[0], x_it[1], x_it[2]);
+
+                        // Get a reference azimuth and elevation for comparison.
+                        if (std::isnan(ref_az))
+                        {
+                            ref_az = az;
+                            ref_az_j = j;
+                            ref_el = el;
+                            ref_el_i = i;
+                            continue;
+                        }
+
+                        // Compute azimuth and elevation if possible (once).
+                        if (j != ref_az_j && std::isnan(azimuth_step_))
+                        {
+                            azimuth_step_ = (az - ref_az) / (j - ref_az_j);
+                        }
+                        if (i != ref_el_i && std::isnan(elevation_step_))
+                        {
+                            elevation_step_ = (el - ref_el) / (i - ref_el_i);
+                        }
+
+                        // Stop early once we have everything.
+                        if (!std::isnan(azimuth_step_) && !std::isnan(elevation_step_))
+                        {
+                            goto estimate_start_values;
+                        }
+                    }
+                }
+            }
+
+            estimate_start_values:
+            if (std::isnan(azimuth_step_))
+            {
+                azimuth_start_ = ref_az;
+            }
+            else
+            {
+                azimuth_start_ = ref_az - ref_az_j * azimuth_step_;
+            }
+            if (std::isnan(elevation_step_))
+            {
+                elevation_start_ = ref_el;
+            }
+            else
+            {
+                elevation_start_ = ref_el - ref_el_i * elevation_step_;
+            }
+
+            // Check that the whole cloud conforms to the estimated parameters.
+            assert(check(cloud));
+        }
+
+        template<typename T>
+        T azimuth(const T x, const T y)
+        {
+            return std::atan2(y, x);
+        }
+
+        template<typename T>
+        T elevation(const T x, const T y, const T z) {
+            return std::atan2(z, std::hypot(x, y));
+        }
+
+        template<typename T>
+        void project(const T x, const T y, const T z, T& u, T& v)
+        {
+            u = azimuth(x, y);
+            v = elevation(x, y, z);
+        }
+
+        template<typename PointIt, typename ProjIt>
+        void project(PointIt x_begin, PointIt x_end, ProjIt u_begin)
+        {
+            for (; x_begin < x_end; ++x_begin, ++u_begin)
+            {
+//                u_begin[0] = (azimuth(x_begin[0], x_begin[1])
+//                    - azimuth_start_) / azimuth_step_;
+//                u_begin[1] = (elevation(x_begin[0], x_begin[1], x_begin[2])
+//                    - elevation_start_) / elevation_step_;
+                project(x_begin[0], x_begin[1], x_begin[2], u_begin[0], u_begin[1]);
+            }
+        }
+
+        // Azimuth, angle in xy plane, positive for x to y direction;
+        // azimuth at image[:, 0], image[:, size_[1] - 1]
+//        float azimuth_[2];
+        float azimuth_start_;
+        float azimuth_step_;
+        // Elevation, angle from from xy plane to point;
+        // elevation at image[0, :], image[size_[0] - 1, :]
+//        float elevation_[2];
+        float elevation_start_;
+        float elevation_step_;
+        // Cloud resolution in elevation and azimuth.
+//        uint32_t size_[2];
+        uint32_t height_;
+        uint32_t width_;
+    };
+
+    void update_point_occupancy(
+            const sensor_msgs::PointCloud2& map,
+            const sensor_msgs::PointCloud2& input,
+            const Vec3& origin,
+            const Elem eps)
+    {
+        // get nearby points
+        // reconstruct input surface
+        // update occupancy:
+        //   occupied if map point within [-eps, eps] distance,
+        //   empty if within [-inf, -eps) distance from input mesh.
     }
 
 }  // namespace naex
