@@ -166,28 +166,37 @@ namespace naex
     template<typename T = float>
     void append_normal_fields(sensor_msgs::PointCloud2& cloud)
     {
-        append_field<T>("normal_x", 1, cloud);
-        append_field<T>("normal_y", 1, cloud);
-        append_field<T>("normal_z", 1, cloud);
+        append_field<T>("nx", 1, cloud);
+        append_field<T>("ny", 1, cloud);
+        append_field<T>("nz", 1, cloud);
     }
 
     void append_occupancy_fields(sensor_msgs::PointCloud2& cloud)
     {
-        append_field<uint16_t>("empty", 1, cloud);
-        append_field<uint16_t>("occupied", 1, cloud);
-        append_field<float>("dynamic", 1, cloud);
+        append_field<uint8_t>("seen_thru", 1, cloud);
+        append_field<uint8_t>("hit", 1, cloud);
+//        append_field<uint16_t>("empty", 1, cloud);
+//        append_field<uint16_t>("occupied", 1, cloud);
+//        append_field<float>("dynamic", 1, cloud);
     }
 
     void append_traversability_fields(sensor_msgs::PointCloud2& cloud)
     {
-        append_field<uint8_t>("num_normal_pts", 1, cloud);
-        append_field<uint8_t>("num_obstacle_pts", 1, cloud);
-        append_field<float>("ground_diff_std", 1, cloud);
-        append_field<float>("ground_diff_min", 1, cloud);
-        append_field<float>("ground_diff_max", 1, cloud);
-        append_field<float>("ground_abs_diff_mean", 1, cloud);
-        append_field<uint8_t>("normal_label", 1, cloud);
-        append_field<uint8_t>("final_label", 1, cloud);
+//        8 bytes
+        append_field<uint8_t>("normal_pts", 1, cloud);
+        append_field<uint8_t>("obs_pts", 1, cloud);
+//        append_field<float>("gnd_diff_std", 1, cloud);
+//        append_field<float>("gnd_diff_min", 1, cloud);
+//        append_field<float>("gnd_diff_max", 1, cloud);
+//        append_field<float>("gnd_abs_diff_mean", 1, cloud);
+        // Compact int8 representation in NN radius.
+//        append_field<float>("trav_radius", 1, cloud);
+        append_field<uint8_t>("gnd_diff_std", 1, cloud);
+        append_field<int8_t>("gnd_diff_min", 1, cloud);
+        append_field<int8_t>("gnd_diff_max", 1, cloud);
+        append_field<uint8_t>("gnd_abs_diff_mean", 1, cloud);
+        append_field<uint8_t>("nz_lbl", 1, cloud);
+        append_field<uint8_t>("final_lbl", 1, cloud);
     }
 
     void append_planning_fields(sensor_msgs::PointCloud2& cloud)
@@ -388,7 +397,6 @@ namespace naex
 
             float ref_az = std::numeric_limits<float>::quiet_NaN();
             uint32_t ref_az_j = std::numeric_limits<uint32_t>::max();
-
             float ref_el = std::numeric_limits<float>::quiet_NaN();
             uint32_t ref_el_i = std::numeric_limits<uint32_t>::max();
 
@@ -463,15 +471,16 @@ namespace naex
         }
 
         template<typename T>
-        T elevation(const T x, const T y, const T z) {
+        T elevation(const T x, const T y, const T z)
+        {
             return std::atan2(z, std::hypot(x, y));
         }
 
         template<typename T>
-        void project(const T x, const T y, const T z, T& u, T& v)
+        void project(const T x, const T y, const T z, T& az, T& el)
         {
-            u = azimuth(x, y);
-            v = elevation(x, y, z);
+            az = azimuth(x, y);
+            el = elevation(x, y, z);
         }
 
         template<typename PointIt, typename ProjIt>
