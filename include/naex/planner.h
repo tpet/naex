@@ -17,7 +17,7 @@
 #include <naex/buffer.h>
 #include <naex/clouds.h>
 #include <naex/iterators.h>
-#include <naex/nn_search.h>
+#include <naex/nearest_neighbors.h>
 #include <naex/timer.h>
 #include <naex/transforms.h>
 #include <naex/types.h>

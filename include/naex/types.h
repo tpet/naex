@@ -10,6 +10,7 @@ namespace naex
 {
     // Point cloud position and normal element type
     typedef float Elem;
+    typedef float Value;
     typedef Eigen::Matrix<Elem, 3, 1, Eigen::DontAlign> Vec3;
     typedef Eigen::Map<Vec3> Vec3Map;
     typedef Eigen::Map<const Vec3> ConstVec3Map;

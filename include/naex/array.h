@@ -6,8 +6,6 @@
 #include <flann/flann.hpp>
 #include <naex/buffer.h>
 
-
-
 namespace naex
 {
 
@@ -18,10 +16,14 @@ public:
     typedef Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::DontAlign> EigenMatrix;
     typedef Eigen::Map<EigenMatrix> EigenMatrixView;
 
+    Array()
+    {}
+
 //    static size_t to_buffer(size_t i)
 //    {
 //        return i * sizeof(T) / sizeof(T);
 //    }
+
     Array(size_t dim_0):
         size_{dim_0},
         stride_{sizeof(T)},

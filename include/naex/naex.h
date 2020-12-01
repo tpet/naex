@@ -6,9 +6,11 @@
 #define NAEX_NAEX_H
 
 #include <naex/clouds.h>
+#include <nearest_neighbors.h>
 #include <naex/types.h>
 #include <nav_msgs/GetPlanRequest.h
 #include <sensor_msgs/point_cloud2_iterator.h>
+#include <unordered_set>
 
 // NB: FLANN knnSearch is not thread-safe!
 // https://stackoverflow.com/questions/39257005/is-opencvflannindex-knnsearch-thread-safe/39339909
@@ -35,6 +37,7 @@ namespace naex
     };
 
     // Not needed, a contiguous buffer within NN graph will be better.
+    /*
     template<typename Index, typename Elem>
     class PointSets
     {
@@ -49,27 +52,7 @@ namespace naex
         std::vector<Index> set_to_start_pt_;
         std::vector<bool> valid_;
     };
-
-    class NearestNeighborGraph
-    {
-    public:
-        void add_points();
-        Type* get_point();
-        // To mark neighboring points for update, NN should be symmetric.
-        // This may be done outside?
-        Type* remove_point(Index i);
-        void update_valid_neighbors();
-
-//        std::map<Buffer<Type>> x_buf_;
-//        std::vector<flann::Matrix<Type>> x_;
-        flann::Index index_;  // FLANN point index.
-//        Buffer<Index> nn_buf_;
-//        flann::Matrix<Index> nn_;  // N-by-K index array, K nearest neighbors for each of N points.
-        Buffer<Index> nn_count_;
-//        Array<1, Index> nn_count_;  // N-by-1, denotes number of valid nearest neighbors.
-        Array<2, Index> nn_array_;  // N-by-K, K nearest neighbors for each of N points.
-//        sensor_msgs::PointCloud2 meta_c
-    };
+    */
 
     class Parameters
     {
@@ -266,6 +249,9 @@ namespace naex
          */
         void insert_cloud(const sensor_msgs::PointCloud2& cloud)
         {
+//            SphericalProjection proj;
+//            proj.fit(cloud);
+//            proj.check(cloud);
 
         }
 //        void iterator(FieldId fid);

@@ -1,5 +1,5 @@
 #include <naex/types.h>
-#include <naex/nn_search.h>
+#include <naex/nearest_neighbors.h>
 // Summary:
 // Indices of removed points are not reused.
 // Pointer of removed point is nulled.
@@ -32,8 +32,24 @@ namespace
 
 int main (int argc, char *argv[])
 {
-    typedef size_t I;
+    // Compiles:
+    //     int, float or double  (invalid: -1, inf)
+    //     int, long  (invalid: -1, 0)
+    //     size_t, float or double  (invalid: max, inf)
+    //     size_t, long (invalid: max, 0)
+    // Doesn't compile:
+    //     int, int
+    //     uint32_t, int
+    typedef int I;
+//    typedef uint32_t I;
+//    typedef size_t I;
     // long compiles, int not
+//    typedef float T;
+//    typedef float D;
+//    typedef double T;
+//    typedef double D;
+//    typedef int T;
+//    typedef int D;
     typedef long T;
     typedef long D;
     typedef Eigen::Matrix<I, 3, Eigen::Dynamic, Eigen::DontAlign> IMat;
@@ -110,10 +126,12 @@ int main (int argc, char *argv[])
     FlannDMat dist(dist_buf.begin(), query.rows, k);
     // Initial NN doesn't seem to be used at all.
     // -1 is set to last valid within radius, (apparently) anything after that.
-    std::fill(nn_buf.begin(), nn_buf.end(), std::numeric_limits<I>::max());
+//    std::fill(nn_buf.begin(), nn_buf.end(), std::numeric_limits<I>::max());
+    std::fill(nn_buf.begin(), nn_buf.end(), 100);
     // Infinite distance used at last valid, initial (anything?) after that.
     // std::fill(dist_buf.begin(), dist_buf.end(), std::numeric_limits<Elem>::infinity());
-    std::fill(dist_buf.begin(), dist_buf.end(), std::numeric_limits<D>::max());
+//    std::fill(dist_buf.begin(), dist_buf.end(), std::numeric_limits<D>::max());
+    std::fill(dist_buf.begin(), dist_buf.end(), 100);
 
     flann::SearchParams params;
     params.cores = 0;

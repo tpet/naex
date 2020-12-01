@@ -1,5 +1,5 @@
 #include <naex/types.h>
-#include <naex/nn_search.h>
+#include <naex/nearest_neighbors.h>
 // Summary:
 // Indices of removed points are not reused.
 // Pointer of removed point is nulled.
@@ -32,6 +32,7 @@ namespace
 
 int main (int argc, char *argv[])
 {
+    // Eigen uses column-major storage, populated row by row.
     MatX mat1(3, 2);
     mat1 << 1., 1.,
             1., 2.,
@@ -51,6 +52,7 @@ int main (int argc, char *argv[])
     std::cout << "mat2:" << std::endl << mat2 << std::endl;
     std::cout << "mat3:" << std::endl << mat3 << std::endl;
 
+    // We implicitly transpose the matrix when converting to FLANN matrix.
     FlannMat fmat1(mat1.data(), 2, 3);
     FlannMat fmat2(mat2.data(), 2, 3);
     FlannMat fmat3(mat3.data(), 2, 3);
@@ -60,10 +62,12 @@ int main (int argc, char *argv[])
     // FlannIndex index(index_params);
     // index.addPoints(fmat1);
     FlannIndex index(fmat1, index_params);
+    std::cout << "mat1 added" << std::endl;
     std::cout << "index.veclen(): " << index.veclen() << std::endl;
     std::cout << "index.size(): " << index.size() << std::endl;
 
     index.addPoints(fmat2);
+    std::cout << "mat2 added" << std::endl;
     std::cout << "index.veclen(): " << index.veclen() << std::endl;
     std::cout << "index.size(): " << index.size() << std::endl;
 
@@ -73,6 +77,7 @@ int main (int argc, char *argv[])
     std::cout << "index.size(): " << index.size() << std::endl;
 
     index.addPoints(fmat3);
+    std::cout << "mat3 added" << std::endl;
     std::cout << "index.veclen(): " << index.veclen() << std::endl;
     std::cout << "index.size(): " << index.size() << std::endl;
 
