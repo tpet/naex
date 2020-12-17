@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <boost/graph/graph_concepts.hpp>
 #include <cmath>
+#include <cstddef>
 #include <Eigen/Dense>
 #include <flann/flann.hpp>
 #include <geometry_msgs/PoseStamped.h>
@@ -496,69 +497,212 @@ namespace naex
 
 namespace naex
 {
+
+    class PointPosition
+    {
+    public:
+        Value position_[3];
+    };
+
+    class Point
+    {
+    public:
+        static const Index K_NEIGHBORS = 32;
+        Value position_[3];
+        // Geometric features
+        // TODO: More compact normal representation? Maybe just for sharing,
+        // impacts on memory is small compared to neighbors.
+        Value normal_[3];
+        Index normal_support_;  // Normal scale is common to all points
+        // TODO: Roughness features.
+        // Viewpoint (for occupancy assessment and measurement distance)
+        Value viewpoint_[3];
+        // Occupancy
+        uint8_t empty_;
+        uint8_t occupied_;
+        uint8_t normal_label_;
+        uint8_t functional_label_;
+        // Planning costs and rewards
+        Value path_cost_;
+        Value reward_;
+        Value relative_cost_;
+        // NN Graph
+        Index neighbor_count_;
+        Index neighbors_[K_NEIGHBORS];
+        Value distances_[K_NEIGHBORS];
+        // Index state:
+        // unindexed = 0
+        // dirty / to update = 1
+        // indexed = 2
+        uint8_t index_state_;
+    };
+
     class Map
     {
         static const size_t DEFAULT_CAPACITY = 10000000;
     public:
         Map():
-                points_buf_(3 * DEFAULT_CAPACITY),
-                normals_buf_(3 * DEFAULT_CAPACITY),
-                viewpoints_buf_(3 * DEFAULT_CAPACITY),
-                occupied_buf_(DEFAULT_CAPACITY),
-                empty_buf_(DEFAULT_CAPACITY),
-                points_(points_buf_.begin(), 0, 3),
-                normals_(normals_buf_.begin(), 0, 3),
-                viewpoints_(viewpoints_buf_.begin(), 0, 3),
+//                points_buf_(3 * DEFAULT_CAPACITY),
+//                normals_buf_(3 * DEFAULT_CAPACITY),
+//                viewpoints_buf_(3 * DEFAULT_CAPACITY),
+//                occupied_buf_(DEFAULT_CAPACITY),
+//                empty_buf_(DEFAULT_CAPACITY),
+//                points_(points_buf_.begin(), 0, 3),
+//                normals_(normals_buf_.begin(), 0, 3),
+//                viewpoints_(viewpoints_buf_.begin(), 0, 3),
                 index_(),
                 points_min_dist_(0.2),
                 min_empty_cos_(0.3)
         {
-            std::fill(points_buf_.begin(), points_buf_.end(), 0.);
-            std::fill(normals_buf_.begin(), normals_buf_.end(), 0.);
-            std::fill(viewpoints_buf_.begin(), viewpoints_buf_.end(), 0.);
-            std::fill(occupied_buf_.begin(), occupied_buf_.end(), 1);
-            std::fill(empty_buf_.begin(), empty_buf_.end(), 0);
+//            std::fill(points_buf_.begin(), points_buf_.end(), 0.);
+//            std::fill(normals_buf_.begin(), normals_buf_.end(), 0.);
+//            std::fill(viewpoints_buf_.begin(), viewpoints_buf_.end(), 0.);
+//            std::fill(occupied_buf_.begin(), occupied_buf_.end(), 1);
+//            std::fill(empty_buf_.begin(), empty_buf_.end(), 0);
+            cloud_.reserve(DEFAULT_CAPACITY);
         }
 
-        void update_matrix_wrappers(size_t n)
-        {
-            Lock lock(snapshot_mutex_);
-            points_ = flann::Matrix<Elem>(points_buf_.begin(), n, 3);
-            normals_ = flann::Matrix<Elem>(normals_buf_.begin(), n, 3);
-            viewpoints_ = flann::Matrix<Elem>(viewpoints_buf_.begin(), n, 3);
-        }
+//        void update_matrix_wrappers(size_t n)
+//        {
+//            Lock lock(snapshot_mutex_);
+//            points_ = flann::Matrix<Elem>(points_buf_.begin(), n, 3);
+//            normals_ = flann::Matrix<Elem>(normals_buf_.begin(), n, 3);
+//            viewpoints_ = flann::Matrix<Elem>(viewpoints_buf_.begin(), n, 3);
+//        }
 
         // TODO: Snapshot whole map object.
-        void snapshot(FlannMat& points, FlannMat& normals, FlannMat& viewpoints, FlannIndexPtr& index,
-                Buffer<uint16_t>& occupied, Buffer<uint16_t>& empty)
-        {
-            Lock lock(snapshot_mutex_);
-            points = points_;
-            normals = normals_;
-            viewpoints = viewpoints_;
-            index = index_;
-            occupied = occupied_buf_;
-            empty = empty_buf_;
-            ROS_INFO("Original size %lu, snapshot size %lu.", points_.rows, points.rows);
-        }
+//        void snapshot(FlannMat& points, FlannMat& normals, FlannMat& viewpoints, FlannIndexPtr& index,
+//                Buffer<uint16_t>& occupied, Buffer<uint16_t>& empty)
+//        {
+//            Lock lock(snapshot_mutex_);
+//            points = points_;
+//            normals = normals_;
+//            viewpoints = viewpoints_;
+//            index = index_;
+//            occupied = occupied_buf_;
+//            empty = empty_buf_;
+//            ROS_INFO("Original size %lu, snapshot size %lu.", points_.rows, points.rows);
+//        }
 
-        void snapshot(flann::Matrix<Elem>& points)
-        {
-            Lock lock(snapshot_mutex_);
-            points = points_;
-        }
+//        void snapshot(flann::Matrix<Elem>& points)
+//        {
+//            Lock lock(snapshot_mutex_);
+//            points = points_;
+//        }
 
-        void update_index()
+    FlannMat position_matrix()
+    {
+        if (cloud_.empty())
         {
-            Timer t;
-            Lock lock(snapshot_mutex_);
-            if (!empty())
+            return FlannMat();
+        }
+        return FlannMat(cloud_[0].position_, cloud_.size(), 3, sizeof(Point));
+    }
+
+    flann::Matrix<int> neighbor_matrix()
+    {
+        if (cloud_.empty())
+        {
+            return flann::Matrix<int>();
+        }
+        // TODO: Inconsistency between boost graph (Index = uint32) and flann (int).
+        return flann::Matrix<int>(reinterpret_cast<int*>(cloud_[0].neighbors_), cloud_.size(), 3, sizeof(Point));
+    }
+
+    Value* position(size_t i)
+    {
+        return &cloud_[i].position_[0];
+    }
+
+    const Value* position(size_t i) const
+    {
+        return &cloud_[i].position_[0];
+    }
+
+    Value* normal(size_t i)
+    {
+        return &cloud_[i].normal_[0];
+    }
+
+    const Value* normal(size_t i) const
+    {
+        return &cloud_[i].normal_[0];
+    }
+
+    void update_index()
+    {
+        Timer t;
+//            Lock lock(snapshot_mutex_);
+        // TODO: Update only dirty points.
+        if (!empty())
+        {
+//                index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(points_, flann::KDTreeSingleIndexParams());
+            index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(position_matrix(), flann::KDTreeSingleIndexParams());
+            // TODO: Is this necessary?
+//                index_->buildIndex();
+        }
+        ROS_DEBUG("Updating index: %.3f s.", t.seconds_elapsed());
+    }
+
+    // Need to use consistent k and radius in every update.
+//    void update_graph(Vertex k, Elem radius)
+    void update_graph()
+    {
+        Timer t;
+//        nn_buf_.resize(num_vertices() * k);
+//        dist_buf_.resize(num_vertices() * k);
+        // Collect points to updated.
+
+        class GraphPoint
+        {
+        public:
+            Value position_[3];
+            // Number of valid entries in neighbors_ and distances_.
+            Index neighbor_count_;
+            int neighbors_[Point::K_NEIGHBORS];
+            Value distances_[Point::K_NEIGHBORS];
+        };
+
+        // TODO: Append to a list on the fly for faster collection here?
+        std::vector<GraphPoint> dirty_cloud;
+        dirty_cloud.reserve(cloud_.size());
+        for (size_t i = 0; i < cloud_.size(); ++i)
+        {
+            if (cloud_[i].index_state_ < 2)
             {
-                index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(points_, flann::KDTreeSingleIndexParams());
-                index_->buildIndex();
+                GraphPoint graph_point;
+                std::copy(cloud_[i].position_, cloud_[i].position_ + 3, graph_point.position_);
+                dirty_cloud.emplace_back(graph_point);
             }
-            ROS_DEBUG("Updating index: %.3f s.", t.seconds_elapsed());
         }
+        if (dirty_cloud.empty())
+        {
+            ROS_INFO("Graph up to date (no points to update).");
+            return;
+        }
+
+//        dist_ = flann::Matrix<Elem>(dist_buf_.begin(), num_vertices(), k);
+//        nn_ = flann::Matrix<int>(nn_buf_.begin(), num_vertices(), k);
+        flann::Matrix<Value> positions(dirty_cloud[0].position_, dirty_cloud.size(), 3, sizeof(GraphPoint));
+//        flann::Matrix<int> neighbors(reinterpret_cast<int>(dirty_cloud[0].neighbors_), dirty_cloud.size(), Point::K_NEIGHBORS, sizeof(GraphPoint));
+        flann::Matrix<int> neighbors(dirty_cloud[0].neighbors_, dirty_cloud.size(), Point::K_NEIGHBORS, sizeof(GraphPoint));
+        flann::Matrix<Value> distances(dirty_cloud[0].distances_, dirty_cloud.size(), Point::K_NEIGHBORS, sizeof(GraphPoint));
+
+        t.reset();
+        flann::SearchParams params;
+        params.checks = 64;
+        params.cores = 0;
+//            params.max_neighbors = k;
+//            points_index_.radiusSearch(points_, nn_, dist_, radius, params);
+        // TODO: Lock index for search in case of concurrent runs.
+//        index_.knnSearch(points_, nn_, dist_, k, params);
+        index_->knnSearch(positions, neighbors, distances, Point::K_NEIGHBORS, params);
+//        k_ = k;
+//        radius_ = radius;
+//        ROS_DEBUG("NN graph (%lu pts): %.3f s.", points_.rows, t.seconds_elapsed());
+        ROS_DEBUG("Updating NN graph at %lu / %lu pts: %.3f s.",
+                  dirty_cloud.size(), cloud_.size(), t.seconds_elapsed());
+    }
 
         /** Resize point buffers if necessary, update wrappers and index. */
         void reserve(size_t n)
@@ -568,23 +712,30 @@ namespace naex
             {
                 return;
             }
-            points_buf_ = points_buf_.copy(3 * n);
-            normals_buf_ = normals_buf_.copy(3 * n);
-            viewpoints_buf_ = viewpoints_buf_.copy(3 * n);
-            update_matrix_wrappers(n);
+//            points_buf_ = points_buf_.copy(3 * n);
+//            normals_buf_ = normals_buf_.copy(3 * n);
+//            viewpoints_buf_ = viewpoints_buf_.copy(3 * n);
+//            update_matrix_wrappers(n);
+            cloud_.reserve(n);
             update_index();
             ROS_INFO("Capacity increased to %lu points: %.3f s.", n, t.seconds_elapsed());
         }
 
-        Elem* end()
-        {
-            return points_buf_.begin() + 3 * size();
-        }
+//        Elem* end()
+//        {
+//            return points_buf_.begin() + 3 * size();
+//        }
+
+//    Point* end()
+//    {
+//        return cloud_ points_buf_.begin() + 3 * size();
+//    }
 
 //        void merge(flann::Matrix<Elem> points, flann::Matrix<Elem> origin)
         void merge(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
         {
-            Lock lock(snapshot_mutex_);
+//            Lock lock(snapshot_mutex_);
+            Lock lock(cloud_mutex_);
             Timer t;
             ROS_DEBUG("Merging cloud started. Capacity %lu points.", capacity());
             // TODO: Forbid allocation while in use or lock?
@@ -592,14 +743,20 @@ namespace naex
 
             if (empty())
             {
-                auto it_points = end();
+//                auto it_points = end();
+                Point point;
                 for (size_t i = 0; i < points.rows; ++i)
                 {
-                    *it_points++ = points[i][0];
-                    *it_points++ = points[i][1];
-                    *it_points++ = points[i][2];
+//                    *it_points++ = points[i][0];
+//                    *it_points++ = points[i][1];
+//                    *it_points++ = points[i][2];
+                    for (size_t j = 0; j < 3; ++j)
+                    {
+                        point.position_[j] = points[i][j];
+                    }
+                    cloud_.emplace_back(point);
                 }
-                update_matrix_wrappers(points.rows);
+//                update_matrix_wrappers(points.rows);
                 update_index();
                 ROS_INFO("Map initialized with %lu points (%.3f s).", points.rows, t.seconds_elapsed());
                 return;
@@ -645,7 +802,8 @@ namespace naex
             {
                 const Index v0 = q_nearby.nn_[0][i];
                 Vec3Map dir(nearby_dirs[i]);
-                dir = ConstVec3Map(points_[v0]) - x_origin;
+//                dir = ConstVec3Map(points_[v0]) - x_origin;
+                dir = ConstVec3Map(&cloud_[v0].position_[0]) - x_origin;
                 const Elem norm = dir.norm();
                 if (std::isnan(norm) || std::isinf(norm) || norm < 1e-3)
                 {
@@ -664,8 +822,12 @@ namespace naex
             for (Index i = 0; i < n_nearby; ++i)
             {
                 const Index v_map = q_nearby.nn_[0][i];
-                ConstVec3Map x_map(points_[v_map]);
-                uint16_t empty_orig = empty_buf_[v_map];
+//                ConstVec3Map x_map(points_[v_map]);
+//                uint16_t empty_orig = empty_buf_[v_map];
+//                ConstVec3Map x_map(&cloud_[v_map].position_[0]);
+//                auto x_map = position_vector(v_map);
+                ConstVec3Map x_map(position(v_map));
+                auto empty_orig = cloud_[v_map].empty_;
                 for (Index j = 0; j < k_dirs; ++j)
                 {
                     const Index v_new = q_dirs.nn_[i][j];
@@ -682,14 +844,21 @@ namespace naex
                     if (d <= points_min_dist_)
                     {
                         // Static / occupied.
-                        if (occupied_buf_[v_map] >= max_observations)
+//                        if (occupied_buf_[v_map] >= max_observations)
+//                        {
+//                            occupied_buf_[v_map] /= 2;
+//                            empty_buf_[v_map] /= 2;
+//                        }
+//                        ++occupied_buf_[v_map];
+                        if (cloud_[v_map].occupied_ >= max_observations)
                         {
-                            occupied_buf_[v_map] /= 2;
-                            empty_buf_[v_map] /= 2;
+                            cloud_[v_map].occupied_ /= 2;
+                            cloud_[v_map].empty_ /= 2;
                         }
-                        ++occupied_buf_[v_map];
+                        ++cloud_[v_map].occupied_;
                         // Clear empty marks from this cloud.
-                        empty_buf_[v_map] = empty_orig;
+                        // TODO: Why would we?
+//                        empty_buf_[v_map] = empty_orig;
                         break;
                     }
                     // Discard rays far from the map points.
@@ -708,24 +877,32 @@ namespace naex
                     // Does farther point see through the map surface?
                     const Elem d_map = (x_map - x_origin).norm();
                     // TODO: To be usable as this normal must have correct orientation.
-                    ConstVec3Map n_map(normals_[v_map]);
+//                    ConstVec3Map n_map(normals_[v_map]);
+                    ConstVec3Map n_map(normal(v_map));
 //                    Elem level = n_map.dot(x_new - x_map);
 //                    if (d_new > d_map && level < 0.)
                     Elem cos = n_map.dot(ConstVec3Map(dirs[v_new]));
                     if (d_new > d_map && std::abs(cos) > min_empty_cos_)
                     {
                         // Dynamic / see through.
-                        if (occupied_buf_[v_map] >= max_observations)
+//                        if (occupied_buf_[v_map] >= max_observations)
+//                        {
+//                            occupied_buf_[v_map] /= 2;
+//                            empty_buf_[v_map] /= 2;
+//                        }
+//                        ++empty_buf_[v_map];
+                        if (cloud_[v_map].empty_ >= max_observations)
                         {
-                            occupied_buf_[v_map] /= 2;
-                            empty_buf_[v_map] /= 2;
+                            cloud_[v_map].occupied_ /= 2;
+                            cloud_[v_map].empty_ /= 2;
                         }
-                        ++empty_buf_[v_map];
+                        ++cloud_[v_map].empty_;
                     }
                 }
 //                ROS_INFO("Point [%.1f, %.1f, %.1f]: %u occupied, %u empty.",
 //                        x_map.x(), x_map.y(), x_map.z(), occupied_buf_[v_map], empty_buf_[v_map]);
-                if (empty_buf_[v_map] / occupied_buf_[v_map] >= 4)
+//                if (empty_buf_[v_map] / occupied_buf_[v_map] >= 4)
+                if (cloud_[v_map].empty_ / cloud_[v_map].occupied_ >= 4)
                 {
                     // TODO: Remove point?
                     // Handle this in processing NN.
@@ -745,7 +922,7 @@ namespace naex
             // separately.
             t.reset();
             size_t n_added = 0;
-            auto it_points = end();
+//            auto it_points = end();
 //            Elem mean = 0.;
             Elem min_dist_2 = points_min_dist_ * points_min_dist_;
             for (size_t i = 0; i < points.rows; ++i)
@@ -756,89 +933,163 @@ namespace naex
 //                if (dist >= points_min_dist_)
                 if (q.dist_[i][0] >= min_dist_2)
                 {
-                    *it_points++ = points[i][0];
-                    *it_points++ = points[i][1];
-                    *it_points++ = points[i][2];
+//                    *it_points++ = points[i][0];
+//                    *it_points++ = points[i][1];
+//                    *it_points++ = points[i][2];
+                    Point point;
+                    for (size_t j = 0; j < 3; ++j)
+                    {
+                        point.position_[j] = points[i][j];
+                    }
+                    cloud_.emplace_back(point);
                     ++n_added;
                 }
             }
 //            mean /= points.rows;
 //            ROS_INFO("Mean distance to map points: %.3f m.", mean);
             size_t n_map = size();
-            update_matrix_wrappers(size() + n_added);
+//            update_matrix_wrappers(size() + n_added);
             // TODO: flann::Index::addPoints (what indices? what with removed indices?)
             update_index();
             ROS_INFO("%lu points merged into map with %lu points (%.3f s).", n_added, n_map, t.seconds_elapsed());
         }
 
+    void create_debug_cloud(sensor_msgs::PointCloud2& cloud)
+    {
+        cloud.point_step = uint32_t(offsetof(Point, position_));
+        append_field<Value>("x", 1, cloud);
+        append_field<Value>("y", 1, cloud);
+        append_field<Value>("z", 1, cloud);
+        cloud.point_step = uint32_t(offsetof(Point, normal_));
+        append_field<Value>("normal_x", 1, cloud);
+        append_field<Value>("normal_y", 1, cloud);
+        append_field<Value>("normal_z", 1, cloud);
+        cloud.point_step = sizeof(Point);
+        sensor_msgs::PointCloud2Modifier modifier(cloud);
+        modifier.resize(cloud_.size());
+        std::copy(&cloud_.front(), &cloud_.back(), &cloud.data.front());
+    }
+
         void create_cloud(sensor_msgs::PointCloud2& cloud)
         {
-            sensor_msgs::PointCloud2Modifier modifier(cloud);
-            modifier.setPointCloud2Fields(9,
-                    "x", 1, sensor_msgs::PointField::FLOAT32,
-                    "y", 1, sensor_msgs::PointField::FLOAT32,
-                    "z", 1, sensor_msgs::PointField::FLOAT32,
-                    "normal_x", 1, sensor_msgs::PointField::FLOAT32,
-                    "normal_y", 1, sensor_msgs::PointField::FLOAT32,
-                    "normal_z", 1, sensor_msgs::PointField::FLOAT32,
-                    "occupied", 1, sensor_msgs::PointField::UINT16,
-                    "empty", 1, sensor_msgs::PointField::UINT16,
-                    "dynamic", 1, sensor_msgs::PointField::FLOAT32);
-            FlannMat points;
-            snapshot(points);
-            modifier.resize(points.rows);
-
-            sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x");
-            sensor_msgs::PointCloud2Iterator<float> nx_it(cloud, "normal_x");
-            sensor_msgs::PointCloud2Iterator<uint16_t> occupied_it(cloud, "occupied");
-            sensor_msgs::PointCloud2Iterator<uint16_t> empty_it(cloud, "empty");
-            sensor_msgs::PointCloud2Iterator<float> dynamic_it(cloud, "dynamic");
-            for (size_t i = 0; i < points.rows; ++i, ++x_it, ++nx_it, ++occupied_it, ++empty_it, ++dynamic_it)
-            {
-                x_it[0] = points[i][0];
-                x_it[1] = points[i][1];
-                x_it[2] = points[i][2];
-                nx_it[0] = normals_[i][0];
-                nx_it[1] = normals_[i][1];
-                nx_it[2] = normals_[i][2];
-                *occupied_it = occupied_buf_[i];
-                *empty_it = empty_buf_[i];
-                *dynamic_it = float(empty_buf_[i]) / occupied_buf_[i];
-            }
+//            sensor_msgs::PointCloud2Modifier modifier(cloud);
+//            modifier.setPointCloud2Fields(9,
+//                    "x", 1, sensor_msgs::PointField::FLOAT32,
+//                    "y", 1, sensor_msgs::PointField::FLOAT32,
+//                    "z", 1, sensor_msgs::PointField::FLOAT32,
+//                    "normal_x", 1, sensor_msgs::PointField::FLOAT32,
+//                    "normal_y", 1, sensor_msgs::PointField::FLOAT32,
+//                    "normal_z", 1, sensor_msgs::PointField::FLOAT32,
+//                    "occupied", 1, sensor_msgs::PointField::UINT16,
+//                    "empty", 1, sensor_msgs::PointField::UINT16,
+//                    "dynamic", 1, sensor_msgs::PointField::FLOAT32);
+//            FlannMat points;
+//            snapshot(points);
+//            modifier.resize(points.rows);
+//
+//            sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x");
+//            sensor_msgs::PointCloud2Iterator<float> nx_it(cloud, "normal_x");
+//            sensor_msgs::PointCloud2Iterator<uint16_t> occupied_it(cloud, "occupied");
+//            sensor_msgs::PointCloud2Iterator<uint16_t> empty_it(cloud, "empty");
+//            sensor_msgs::PointCloud2Iterator<float> dynamic_it(cloud, "dynamic");
+//            for (size_t i = 0; i < points.rows; ++i, ++x_it, ++nx_it, ++occupied_it, ++empty_it, ++dynamic_it)
+//            {
+//                x_it[0] = points[i][0];
+//                x_it[1] = points[i][1];
+//                x_it[2] = points[i][2];
+//                nx_it[0] = normals_[i][0];
+//                nx_it[1] = normals_[i][1];
+//                nx_it[2] = normals_[i][2];
+//                *occupied_it = occupied_buf_[i];
+//                *empty_it = empty_buf_[i];
+//                *dynamic_it = float(empty_buf_[i]) / occupied_buf_[i];
+//            }
+            create_debug_cloud(cloud);
         }
+
+    size_t capacity() const
+    {
+//            return points_buf_.size() / 3;
+        return cloud_.capacity();
+    }
+
+    size_t size() const
+    {
+        // TODO: Lock? Make thread safe?
+//            return points_.rows;
+        return cloud_.size();
+    }
+
+    size_t empty() const
+    {
+//            return size() == 0;
+        return cloud_.empty();
+    }
+
+    std::vector<Point>& get_cloud()
+    {
+        return cloud_;
+    }
+
+    const std::vector<Point>& get_cloud() const
+    {
+        return cloud_;
+    }
 
         float points_min_dist_;
         float min_empty_cos_;
 
     protected:
-        size_t capacity() const
-        {
-            return points_buf_.size() / 3;
-        }
 
-        size_t size() const
-        {
-            // TODO: Lock? Make thread safe?
-            return points_.rows;
-        }
-
-        size_t empty() const
-        {
-            return size() == 0;
-        }
-
-        Buffer<Elem> points_buf_;
-        Buffer<Elem> normals_buf_;
+//        Buffer<Elem> points_buf_;
+//        Buffer<Elem> normals_buf_;
         Buffer<Elem> viewpoints_buf_;
-        Buffer<uint16_t> occupied_buf_;
-        Buffer<uint16_t> empty_buf_;
+//        Buffer<uint16_t> occupied_buf_;
+//        Buffer<uint16_t> empty_buf_;
 
         typedef std::recursive_mutex Mutex;
         typedef std::lock_guard<Mutex> Lock;
-        Mutex snapshot_mutex_;
-        flann::Matrix<Elem> points_;
-        flann::Matrix<Elem> normals_;
-        flann::Matrix<Elem> viewpoints_;
+//        Mutex snapshot_mutex_;
+//        flann::Matrix<Elem> points_;
+//        flann::Matrix<Elem> normals_;
+//        flann::Matrix<Elem> viewpoints_;
+
+        Mutex cloud_mutex_;
+        std::vector<Point> cloud_;
+//        sensor_msgs::PointCloud2 cloud_;
+//        sensor_msgs::PointCloud2Modifier cloud_modifier_;
+//        // NB: Iterators are initialized only once. Avoid using iter.end() as
+//        //   this won't be valid!
+//        std::shared_ptr<sensor_msgs::PointCloud2Iterator<Value>> x_iter_;
+//        // NN Graph
+//        std::shared_ptr<sensor_msgs::PointCloud2Iterator<Index>> nn_count_iter_;
+//        sensor_msgs::PointCloud2Iterator<Index> nn_iter_;
+//        // Viewpoint (for occupancy assessment and measurement distance)
+//        sensor_msgs::PointCloud2Iterator<Value> vp_x_iter_;
+//        // Geometric features
+////        sensor_msgs::PointCloud2Iterator<Value> normal_x_iter_;
+//        sensor_msgs::PointCloud2Iterator<int8_t> normal_x_iter_;
+//        // Normal scale is common
+////        sensor_msgs::PointCloud2Iterator<Value> normal_scale_iter_;
+//        sensor_msgs::PointCloud2Iterator<uint8_t> normal_support_iter_;
+//        // Occupancy
+//        sensor_msgs::PointCloud2Iterator<uint8_t> empty_iter_;
+//        sensor_msgs::PointCloud2Iterator<uint8_t> occupied_iter_;
+//        // Traversability labels
+//        sensor_msgs::PointCloud2Iterator<uint8_t> normal_label_iter_;
+//        sensor_msgs::PointCloud2Iterator<uint8_t> func_label_iter_;
+//        // Planning costs and rewards
+//        sensor_msgs::PointCloud2Iterator<Value> path_cost_iter_;
+////        sensor_msgs::PointCloud2Iterator<Value> min_vp_dist_;
+////        sensor_msgs::PointCloud2Iterator<Value> min_other_vp_dist_;
+//        sensor_msgs::PointCloud2Iterator<Value> reward_iter_;
+//        sensor_msgs::PointCloud2Iterator<Value> rel_cost_iter_;
+//        // Index metadata
+//        // unindexed
+//        // indexed
+//        // to_update
+//        sensor_msgs::PointCloud2Iterator<uint8_t> index_state_iter_;
+
         std::shared_ptr<flann::Index<flann::L2_3D<Elem>>> index_;
     };
 
@@ -1253,18 +1504,20 @@ public:
             }
             const geometry_msgs::PoseStamped goal = req.goal;
 
-            FlannMat points;
-            FlannMat normals;
-            FlannMat viewpoints;
-            FlannIndexPtr index;
-            Buffer<uint16_t> occupied;
-            Buffer<uint16_t> empty;
-            map_.snapshot(points, normals, viewpoints, index, occupied, empty);
+//            FlannMat points;
+//            FlannMat normals;
+//            FlannMat viewpoints;
+//            FlannIndexPtr index;
+//            Buffer<uint16_t> occupied;
+//            Buffer<uint16_t> empty;
+//            map_.snapshot(points, normals, viewpoints, index, occupied, empty);
 
             size_t min_map_points = 64;
-            if (points.rows < min_map_points)
+//            if (points.rows < min_map_points)
+            if (map_.get_cloud().size() < min_map_points)
             {
-                ROS_ERROR("Cannot plan in map with %lu < %lu points.", points.rows, min_map_points);
+                ROS_ERROR("Cannot plan in map with %lu < %lu points.",
+                    map_.get_cloud().size(), min_map_points);
                 return false;
             }
 
@@ -1272,13 +1525,15 @@ public:
 
             // Initialize debug cloud for visualization of intermediate results.
             sensor_msgs::PointCloud2 debug_cloud;
-            create_debug_cloud(points, normals, debug_cloud);
+//            create_debug_cloud(points, normals, debug_cloud);
+            map_.create_debug_cloud(debug_cloud);
+
             debug_cloud.header.frame_id = map_frame_;
             // TODO: Refresh on sending?
             debug_cloud.header.stamp = ros::Time::now();
             // Reconstruct original 2D shape.
             debug_cloud.height = 1;
-            debug_cloud.width = points.rows;
+            debug_cloud.width = map_.get_cloud().size();
 
             // Compute preliminary point labels based on normals.
             Graph g(points, normals, occupied, empty, max_pitch_, max_roll_, uint16_t(empty_ratio_));

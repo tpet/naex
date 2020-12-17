@@ -144,10 +144,12 @@ namespace naex
         const std::string& name,
         const uint32_t count,
         sensor_msgs::PointCloud2 &cloud)
+//        const uint32_t offset = cloud.point_step)
     {
         sensor_msgs::PointField field;
         field.name = name;
         field.offset = cloud.point_step;
+//        field.offset = offset;
         field.datatype = PointFieldTraits<T>::datatype();
         field.count = count;
         cloud.fields.emplace_back(field);

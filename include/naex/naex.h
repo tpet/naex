@@ -5,6 +5,7 @@
 #ifndef NAEX_NAEX_H
 #define NAEX_NAEX_H
 
+#include <memory>
 #include <naex/clouds.h>
 #include <nearest_neighbors.h>
 #include <naex/types.h>
@@ -89,11 +90,14 @@ namespace naex
             planning_freq_(1.),
             num_input_clouds_(1),
             queue_size_(5),
+
             default_request_( )
         {}
 
-        void configure(ros::NodeHandle& nh, ros::NodeHandle& pnh)
+        void load_ros_params(ros::NodeHandle& nh, ros::NodeHandle& pnh)
         {
+            std::lock_guard<std::recursive_mutex> lock(mutex_);
+
             pnh.param("position_name", position_name_, position_name_);
             pnh.param("normal_name", normal_name_, normal_name_);
             pnh.param("map_frame", map_frame_, map_frame_);
@@ -196,6 +200,8 @@ namespace naex
         int num_input_clouds_;
         int queue_size_;
 
+        std::recursive_mutex mutex_;
+
         nav_msgs::GetPlanRequest default_request_;
     };
 
@@ -289,7 +295,8 @@ namespace naex
         // Viewpoint (for occupancy assessment and measurement distance)
         sensor_msgs::PointCloud2Iterator<Value> vp_x_iter_;
         // Geometric features
-        sensor_msgs::PointCloud2Iterator<Value> normal_x_iter_;
+//        sensor_msgs::PointCloud2Iterator<Value> normal_x_iter_;
+        sensor_msgs::PointCloud2Iterator<int8_t> normal_x_iter_;
         // Normal scale is common
 //        sensor_msgs::PointCloud2Iterator<Value> normal_scale_iter_;
         sensor_msgs::PointCloud2Iterator<uint8_t> normal_support_iter_;
@@ -326,10 +333,11 @@ namespace naex
         typedef std::recursive_mutex RMutex;
         typedef std::lock_guard<RMutex> RLock;
 
-        Planner()
+        Planner(ros::NodeHandle& nh, ros::NodeHandle& pnh)
         {
-
+            params_.get_ros_params(nh, pnh);
         }
+
         void initialize_cloud();
         void resize_cloud();
         void plan(const Map& map, Plan& plan);
