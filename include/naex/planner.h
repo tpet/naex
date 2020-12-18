@@ -498,11 +498,11 @@ namespace naex
 namespace naex
 {
 
-    class PointPosition
-    {
-    public:
-        Value position_[3];
-    };
+//    class PointPosition
+//    {
+//    public:
+//        Value position_[3];
+//    };
 
     class Point
     {
@@ -514,12 +514,20 @@ namespace naex
         // impacts on memory is small compared to neighbors.
         Value normal_[3];
         Index normal_support_;  // Normal scale is common to all points
-        // TODO: Roughness features.
+        // Roughness features.
+        // from ball neighborhood
+        Buffer<Elem> ground_diff_std_;
+        // circle in ground plane
+        Value ground_diff_min_;
+        Value ground_diff_max_;
+        Value ground_abs_diff_mean_;
         // Viewpoint (for occupancy assessment and measurement distance)
         Value viewpoint_[3];
         // Occupancy
         uint8_t empty_;
         uint8_t occupied_;
+        uint8_t num_obstacle_pts_;
+        uint8_t num_edge_neighbors_;
         uint8_t normal_label_;
         uint8_t functional_label_;
         // Planning costs and rewards
@@ -649,9 +657,6 @@ namespace naex
     void update_graph()
     {
         Timer t;
-//        nn_buf_.resize(num_vertices() * k);
-//        dist_buf_.resize(num_vertices() * k);
-        // Collect points to updated.
 
         class GraphPoint
         {
@@ -663,13 +668,17 @@ namespace naex
             Value distances_[Point::K_NEIGHBORS];
         };
 
+        // Collect points to updated.
         // TODO: Append to a list on the fly for faster collection here?
+        std::vector<Index> dirty_indices;
         std::vector<GraphPoint> dirty_cloud;
+        dirty_indices.reserve(cloud_.size());
         dirty_cloud.reserve(cloud_.size());
-        for (size_t i = 0; i < cloud_.size(); ++i)
+        for (Index i = 0; i < cloud_.size(); ++i)
         {
             if (cloud_[i].index_state_ < 2)
             {
+                dirty_indices.push_back(i);
                 GraphPoint graph_point;
                 std::copy(cloud_[i].position_, cloud_[i].position_ + 3, graph_point.position_);
                 dirty_cloud.emplace_back(graph_point);
@@ -677,7 +686,7 @@ namespace naex
         }
         if (dirty_cloud.empty())
         {
-            ROS_INFO("Graph up to date (no points to update).");
+            ROS_INFO("Graph up to date (no points to update): %.3f s.", t.seconds_elapsed());
             return;
         }
 
@@ -688,7 +697,7 @@ namespace naex
         flann::Matrix<int> neighbors(dirty_cloud[0].neighbors_, dirty_cloud.size(), Point::K_NEIGHBORS, sizeof(GraphPoint));
         flann::Matrix<Value> distances(dirty_cloud[0].distances_, dirty_cloud.size(), Point::K_NEIGHBORS, sizeof(GraphPoint));
 
-        t.reset();
+//        t.reset();
         flann::SearchParams params;
         params.checks = 64;
         params.cores = 0;
@@ -696,12 +705,108 @@ namespace naex
 //            points_index_.radiusSearch(points_, nn_, dist_, radius, params);
         // TODO: Lock index for search in case of concurrent runs.
 //        index_.knnSearch(points_, nn_, dist_, k, params);
-        index_->knnSearch(positions, neighbors, distances, Point::K_NEIGHBORS, params);
+        {
+            Lock lock(index_mutex_);
+            index_->knnSearch(positions, neighbors, distances, Point::K_NEIGHBORS, params);
+        }
+        // Propagate NN info into the main graph.
+        for (Index i = 0; i < dirty_indices.size(); ++i)
+        {
+            std::copy(dirty_cloud[i].neighbors_,
+                      dirty_cloud[i].neighbors_ + Point::K_NEIGHBORS,
+                      cloud_[dirty_indices[i]].neighbors_);
+            std::copy(dirty_cloud[i].distances_,
+                      dirty_cloud[i].distances_ + Point::K_NEIGHBORS,
+                      cloud_[dirty_indices[i]].distances_);
+        }
 //        k_ = k;
 //        radius_ = radius;
 //        ROS_DEBUG("NN graph (%lu pts): %.3f s.", points_.rows, t.seconds_elapsed());
         ROS_DEBUG("Updating NN graph at %lu / %lu pts: %.3f s.",
                   dirty_cloud.size(), cloud_.size(), t.seconds_elapsed());
+    }
+
+    void update_features()
+    {
+        const Value semicircle_centroid_offset = 4. * radius_ / (3. * M_PI);;
+        auto radius2 = radius_ * radius_;
+        // Update dirty points.
+        // TODO: Use a precomputed index list.
+
+        for (Index i = 0; i < cloud_.size(); ++i)
+        {
+            if (cloud_[i].index_state_ == UP_TO_DATE)
+            {
+                continue;
+            }
+            assert(cloud_[i].index_state_ == TO_UPDATE);
+
+            //***
+            // Disregard empty points.
+            if (cloud_[i].functional_label_ == EMPTY)
+            {
+                continue;
+            }
+            Vec3 mean = Vec3::Zero();
+            Mat3 cov = Mat3::Zero();
+//            num_normal_pts_[v0] = 0;
+            cloud_[i].normal_support_ = 0;
+            for (Index j = 0; j < Point::K_NEIGHBORS; ++j)
+            {
+                if (std::isinf(cloud_[i].distances_[j]))
+                {
+                    continue;
+                }
+//            for (size_t j = 0; j < nn_.cols; ++j)
+//            {
+//                Index v1 = nn_[v0][j];
+                Index k = cloud_[i].neighbors_[j];
+                // Disregard empty points.
+                if (cloud_[k].functional_label_ == EMPTY)
+                {
+                    continue;
+                }
+                if (cloud_[i].distances_[j] <= radius2)
+                {
+                    mean += ConstVec3Map(cloud_[k].position_);
+//                    ++num_normal_pts_[v0];
+//                    Vec3 pc = (ConstVec3Map(cloud_[v1].position_) - mean);
+                    Vec3 pc = (ConstVec3Map(cloud_[k].position_) - ConstVec3Map(cloud_[i].position_));
+                    cov += pc * pc.transpose();
+                    ++cloud_[i].normal_support_;
+                }
+            }
+//                if (n < min_normal_pts)
+//                {
+//                    continue;
+//                }
+//                mean /= n;
+            mean /= cloud_[i].normal_support_;
+            cov /= cloud_[i].normal_support_;
+            Eigen::SelfAdjointEigenSolver<Mat3> solver(cov);
+            Vec3Map normal(cloud_[i].normal_);
+            normal = solver.eigenvectors().col(0);
+            cloud_[i].ground_diff_std_ = std::sqrt(solver.eigenvalues()(0));
+            // Inject support label here where we have computed mean.
+            if ((mean - ConstVec3Map(cloud_[i].position_)).norm()
+                > edge_min_rel_centroid_offset_ * semicircle_centroid_offset)
+            {
+                cloud_[i].functional_label_ = EDGE;
+            }
+
+            cloud_[i].index_state_ = UP_TO_DATE;
+        }
+        //            g.compute_graph_features(min_normal_pts_, normal_radius_, edge_min_centroid_offset_);
+        //            fill_field("num_normal_pts", g.num_normal_pts_.begin(), debug_cloud);
+        //            fill_field("ground_diff_std", g.ground_diff_std_.begin(), debug_cloud);
+        //            g.compute_normal_labels();
+        //            fill_field("normal_label", g.labels_.begin(), debug_cloud);
+        //            normal_label_cloud_pub_.publish(debug_cloud);
+        //            // Adjust points labels using constructed NN graph.
+        ////            g.compute_final_labels(max_nn_height_diff_);
+        //            g.compute_final_labels(max_nn_height_diff_, clearance_low_, clearance_high_, min_points_obstacle_,
+        //                    max_ground_diff_std_, max_ground_abs_diff_mean_, min_dist_to_obstacle_);
+
     }
 
         /** Resize point buffers if necessary, update wrappers and index. */
@@ -1041,6 +1146,9 @@ namespace naex
 
     protected:
 
+        Value radius_;
+        Value edge_min_rel_centroid_offset_;
+
 //        Buffer<Elem> points_buf_;
 //        Buffer<Elem> normals_buf_;
         Buffer<Elem> viewpoints_buf_;
@@ -1090,7 +1198,10 @@ namespace naex
 //        // to_update
 //        sensor_msgs::PointCloud2Iterator<uint8_t> index_state_iter_;
 
+        Mutex index_mutex_;
         std::shared_ptr<flann::Index<flann::L2_3D<Elem>>> index_;
+
+//        Parameters params_;
     };
 
 class NotInitialized: public std::runtime_error
@@ -1533,22 +1644,30 @@ public:
             debug_cloud.header.stamp = ros::Time::now();
             // Reconstruct original 2D shape.
             debug_cloud.height = 1;
-            debug_cloud.width = map_.get_cloud().size();
+            debug_cloud.width = uint32_t(map_.get_cloud().size());
 
-            // Compute preliminary point labels based on normals.
-            Graph g(points, normals, occupied, empty, max_pitch_, max_roll_, uint16_t(empty_ratio_));
-            g.k_ = neighborhood_knn_;
-            g.radius_ = neighborhood_radius_;
+            // Get robot positions.
             std::vector<Elem> robots;
             if (filter_robots_)
             {
                 // Don't wait for robot positions for planning.
                 find_robots(map_frame_, ros::Time(), robots, 0.f);
             }
-            g.compute_occupancy_labels(robots);
+
+            // Compute preliminary point labels based on normals.
+//            Graph g(points, normals, occupied, empty, max_pitch_, max_roll_, uint16_t(empty_ratio_));
+//            g.k_ = neighborhood_knn_;
+//            g.radius_ = neighborhood_radius_;
+
+            // Update NN graph and recompute affected labels.
+            // Clear dirty state.
+            // TODO: Deal with occupancy on merging.
+//            g.compute_occupancy_labels(robots);
             // Construct NN graph.
-            g.build_index();
-            g.compute_graph(neighborhood_knn_, neighborhood_radius_);
+            // TODO: Index rebuild incrementally with new points.
+//            g.build_index();
+            map_.update_graph();
+//            g.compute_graph(neighborhood_knn_, neighborhood_radius_);
 //            g.recompute_normals(min_normal_pts_, normal_radius_);
             g.compute_graph_features(min_normal_pts_, normal_radius_, edge_min_centroid_offset_);
             fill_field("num_normal_pts", g.num_normal_pts_.begin(), debug_cloud);

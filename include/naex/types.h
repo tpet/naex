@@ -36,15 +36,27 @@ namespace naex
     typedef std::shared_ptr<FlannIndex> FlannIndexPtr;
     typedef std::shared_ptr<const FlannIndex> ConstFlannIndexPtr;
 
-    enum Label
-    {
-        TRAVERSABLE = 0,
-        EMPTY = 1,
-        UNKNOWN = 2,
-        EDGE = 3,
-        ACTOR = 4,
-        OBSTACLE = 5
-    };
+//    namespace IndexState
+//    {
+        enum IndexState
+        {
+            TO_UPDATE = 0,
+            UP_TO_DATE = 1
+        };
+//    }
+
+//    namespace Label
+//    {
+        enum Label
+        {
+            TRAVERSABLE = 0,
+            EMPTY = 1,
+            UNKNOWN = 2,
+            EDGE = 3,
+            ACTOR = 4,
+            OBSTACLE = 5
+        };
+//    }
     typedef Buffer<uint8_t> Labels;
 
     const Vertex INVALID_VERTEX = std::numeric_limits<Vertex>::max();
