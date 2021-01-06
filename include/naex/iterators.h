@@ -167,6 +167,10 @@ public:
 private:
     V value_;
 };
+
+typedef ValueIterator<Vertex> VertexIter;
+typedef ValueIterator<Edge> EdgeIter;
+
 }  // namespace naex
 
 #endif //NAEX_ITERATORS_H

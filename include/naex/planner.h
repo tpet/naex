@@ -18,7 +18,9 @@
 #include <naex/buffer.h>
 #include <naex/clouds.h>
 #include <naex/iterators.h>
+#include <naex/map.h>
 #include <naex/nearest_neighbors.h>
+#include <naex/params.h>
 #include <naex/timer.h>
 #include <naex/transforms.h>
 #include <naex/types.h>
@@ -498,720 +500,6 @@ namespace naex
 namespace naex
 {
 
-//    class PointPosition
-//    {
-//    public:
-//        Value position_[3];
-//    };
-
-    class Point
-    {
-    public:
-        static const Index K_NEIGHBORS = 32;
-        Value position_[3];
-        // Geometric features
-        // TODO: More compact normal representation? Maybe just for sharing,
-        // impacts on memory is small compared to neighbors.
-        Value normal_[3];
-        Index normal_support_;  // Normal scale is common to all points
-        // Roughness features.
-        // from ball neighborhood
-        Buffer<Elem> ground_diff_std_;
-        // circle in ground plane
-        Value ground_diff_min_;
-        Value ground_diff_max_;
-        Value ground_abs_diff_mean_;
-        // Viewpoint (for occupancy assessment and measurement distance)
-        Value viewpoint_[3];
-        // Occupancy
-        uint8_t empty_;
-        uint8_t occupied_;
-        uint8_t num_obstacle_pts_;
-        uint8_t num_edge_neighbors_;
-        uint8_t normal_label_;
-        uint8_t functional_label_;
-        // Planning costs and rewards
-        Value path_cost_;
-        Value reward_;
-        Value relative_cost_;
-        // NN Graph
-        Index neighbor_count_;
-        Index neighbors_[K_NEIGHBORS];
-        Value distances_[K_NEIGHBORS];
-        // Index state:
-        // unindexed = 0
-        // dirty / to update = 1
-        // indexed = 2
-        uint8_t index_state_;
-    };
-
-    class Map
-    {
-        static const size_t DEFAULT_CAPACITY = 10000000;
-    public:
-        Map():
-//                points_buf_(3 * DEFAULT_CAPACITY),
-//                normals_buf_(3 * DEFAULT_CAPACITY),
-//                viewpoints_buf_(3 * DEFAULT_CAPACITY),
-//                occupied_buf_(DEFAULT_CAPACITY),
-//                empty_buf_(DEFAULT_CAPACITY),
-//                points_(points_buf_.begin(), 0, 3),
-//                normals_(normals_buf_.begin(), 0, 3),
-//                viewpoints_(viewpoints_buf_.begin(), 0, 3),
-                index_(),
-                points_min_dist_(0.2),
-                min_empty_cos_(0.3)
-        {
-//            std::fill(points_buf_.begin(), points_buf_.end(), 0.);
-//            std::fill(normals_buf_.begin(), normals_buf_.end(), 0.);
-//            std::fill(viewpoints_buf_.begin(), viewpoints_buf_.end(), 0.);
-//            std::fill(occupied_buf_.begin(), occupied_buf_.end(), 1);
-//            std::fill(empty_buf_.begin(), empty_buf_.end(), 0);
-            cloud_.reserve(DEFAULT_CAPACITY);
-        }
-
-//        void update_matrix_wrappers(size_t n)
-//        {
-//            Lock lock(snapshot_mutex_);
-//            points_ = flann::Matrix<Elem>(points_buf_.begin(), n, 3);
-//            normals_ = flann::Matrix<Elem>(normals_buf_.begin(), n, 3);
-//            viewpoints_ = flann::Matrix<Elem>(viewpoints_buf_.begin(), n, 3);
-//        }
-
-        // TODO: Snapshot whole map object.
-//        void snapshot(FlannMat& points, FlannMat& normals, FlannMat& viewpoints, FlannIndexPtr& index,
-//                Buffer<uint16_t>& occupied, Buffer<uint16_t>& empty)
-//        {
-//            Lock lock(snapshot_mutex_);
-//            points = points_;
-//            normals = normals_;
-//            viewpoints = viewpoints_;
-//            index = index_;
-//            occupied = occupied_buf_;
-//            empty = empty_buf_;
-//            ROS_INFO("Original size %lu, snapshot size %lu.", points_.rows, points.rows);
-//        }
-
-//        void snapshot(flann::Matrix<Elem>& points)
-//        {
-//            Lock lock(snapshot_mutex_);
-//            points = points_;
-//        }
-
-    FlannMat position_matrix()
-    {
-        if (cloud_.empty())
-        {
-            return FlannMat();
-        }
-        return FlannMat(cloud_[0].position_, cloud_.size(), 3, sizeof(Point));
-    }
-
-    flann::Matrix<int> neighbor_matrix()
-    {
-        if (cloud_.empty())
-        {
-            return flann::Matrix<int>();
-        }
-        // TODO: Inconsistency between boost graph (Index = uint32) and flann (int).
-        return flann::Matrix<int>(reinterpret_cast<int*>(cloud_[0].neighbors_), cloud_.size(), 3, sizeof(Point));
-    }
-
-    Value* position(size_t i)
-    {
-        return &cloud_[i].position_[0];
-    }
-
-    const Value* position(size_t i) const
-    {
-        return &cloud_[i].position_[0];
-    }
-
-    Value* normal(size_t i)
-    {
-        return &cloud_[i].normal_[0];
-    }
-
-    const Value* normal(size_t i) const
-    {
-        return &cloud_[i].normal_[0];
-    }
-
-    void update_index()
-    {
-        Timer t;
-//            Lock lock(snapshot_mutex_);
-        // TODO: Update only dirty points.
-        if (!empty())
-        {
-//                index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(points_, flann::KDTreeSingleIndexParams());
-            index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(position_matrix(), flann::KDTreeSingleIndexParams());
-            // TODO: Is this necessary?
-//                index_->buildIndex();
-        }
-        ROS_DEBUG("Updating index: %.3f s.", t.seconds_elapsed());
-    }
-
-    // Need to use consistent k and radius in every update.
-//    void update_graph(Vertex k, Elem radius)
-    void update_graph()
-    {
-        Timer t;
-
-        class GraphPoint
-        {
-        public:
-            Value position_[3];
-            // Number of valid entries in neighbors_ and distances_.
-            Index neighbor_count_;
-            int neighbors_[Point::K_NEIGHBORS];
-            Value distances_[Point::K_NEIGHBORS];
-        };
-
-        // Collect points to updated.
-        // TODO: Append to a list on the fly for faster collection here?
-        std::vector<Index> dirty_indices;
-        std::vector<GraphPoint> dirty_cloud;
-        dirty_indices.reserve(cloud_.size());
-        dirty_cloud.reserve(cloud_.size());
-        for (Index i = 0; i < cloud_.size(); ++i)
-        {
-            if (cloud_[i].index_state_ < 2)
-            {
-                dirty_indices.push_back(i);
-                GraphPoint graph_point;
-                std::copy(cloud_[i].position_, cloud_[i].position_ + 3, graph_point.position_);
-                dirty_cloud.emplace_back(graph_point);
-            }
-        }
-        if (dirty_cloud.empty())
-        {
-            ROS_INFO("Graph up to date (no points to update): %.3f s.", t.seconds_elapsed());
-            return;
-        }
-
-//        dist_ = flann::Matrix<Elem>(dist_buf_.begin(), num_vertices(), k);
-//        nn_ = flann::Matrix<int>(nn_buf_.begin(), num_vertices(), k);
-        flann::Matrix<Value> positions(dirty_cloud[0].position_, dirty_cloud.size(), 3, sizeof(GraphPoint));
-//        flann::Matrix<int> neighbors(reinterpret_cast<int>(dirty_cloud[0].neighbors_), dirty_cloud.size(), Point::K_NEIGHBORS, sizeof(GraphPoint));
-        flann::Matrix<int> neighbors(dirty_cloud[0].neighbors_, dirty_cloud.size(), Point::K_NEIGHBORS, sizeof(GraphPoint));
-        flann::Matrix<Value> distances(dirty_cloud[0].distances_, dirty_cloud.size(), Point::K_NEIGHBORS, sizeof(GraphPoint));
-
-//        t.reset();
-        flann::SearchParams params;
-        params.checks = 64;
-        params.cores = 0;
-//            params.max_neighbors = k;
-//            points_index_.radiusSearch(points_, nn_, dist_, radius, params);
-        // TODO: Lock index for search in case of concurrent runs.
-//        index_.knnSearch(points_, nn_, dist_, k, params);
-        {
-            Lock lock(index_mutex_);
-            index_->knnSearch(positions, neighbors, distances, Point::K_NEIGHBORS, params);
-        }
-        // Propagate NN info into the main graph.
-        for (Index i = 0; i < dirty_indices.size(); ++i)
-        {
-            std::copy(dirty_cloud[i].neighbors_,
-                      dirty_cloud[i].neighbors_ + Point::K_NEIGHBORS,
-                      cloud_[dirty_indices[i]].neighbors_);
-            std::copy(dirty_cloud[i].distances_,
-                      dirty_cloud[i].distances_ + Point::K_NEIGHBORS,
-                      cloud_[dirty_indices[i]].distances_);
-        }
-//        k_ = k;
-//        radius_ = radius;
-//        ROS_DEBUG("NN graph (%lu pts): %.3f s.", points_.rows, t.seconds_elapsed());
-        ROS_DEBUG("Updating NN graph at %lu / %lu pts: %.3f s.",
-                  dirty_cloud.size(), cloud_.size(), t.seconds_elapsed());
-    }
-
-    void update_features()
-    {
-        const Value semicircle_centroid_offset = 4. * radius_ / (3. * M_PI);;
-        auto radius2 = radius_ * radius_;
-        // Update dirty points.
-        // TODO: Use a precomputed index list.
-
-        for (Index i = 0; i < cloud_.size(); ++i)
-        {
-            if (cloud_[i].index_state_ == UP_TO_DATE)
-            {
-                continue;
-            }
-            assert(cloud_[i].index_state_ == TO_UPDATE);
-
-            //***
-            // Disregard empty points.
-            if (cloud_[i].functional_label_ == EMPTY)
-            {
-                continue;
-            }
-            Vec3 mean = Vec3::Zero();
-            Mat3 cov = Mat3::Zero();
-//            num_normal_pts_[v0] = 0;
-            cloud_[i].normal_support_ = 0;
-            for (Index j = 0; j < Point::K_NEIGHBORS; ++j)
-            {
-                if (std::isinf(cloud_[i].distances_[j]))
-                {
-                    continue;
-                }
-//            for (size_t j = 0; j < nn_.cols; ++j)
-//            {
-//                Index v1 = nn_[v0][j];
-                Index k = cloud_[i].neighbors_[j];
-                // Disregard empty points.
-                if (cloud_[k].functional_label_ == EMPTY)
-                {
-                    continue;
-                }
-                if (cloud_[i].distances_[j] <= radius2)
-                {
-                    mean += ConstVec3Map(cloud_[k].position_);
-//                    ++num_normal_pts_[v0];
-//                    Vec3 pc = (ConstVec3Map(cloud_[v1].position_) - mean);
-                    Vec3 pc = (ConstVec3Map(cloud_[k].position_) - ConstVec3Map(cloud_[i].position_));
-                    cov += pc * pc.transpose();
-                    ++cloud_[i].normal_support_;
-                }
-            }
-//                if (n < min_normal_pts)
-//                {
-//                    continue;
-//                }
-//                mean /= n;
-            mean /= cloud_[i].normal_support_;
-            cov /= cloud_[i].normal_support_;
-            Eigen::SelfAdjointEigenSolver<Mat3> solver(cov);
-            Vec3Map normal(cloud_[i].normal_);
-            normal = solver.eigenvectors().col(0);
-            cloud_[i].ground_diff_std_ = std::sqrt(solver.eigenvalues()(0));
-            // Inject support label here where we have computed mean.
-            if ((mean - ConstVec3Map(cloud_[i].position_)).norm()
-                > edge_min_rel_centroid_offset_ * semicircle_centroid_offset)
-            {
-                cloud_[i].functional_label_ = EDGE;
-            }
-
-            cloud_[i].index_state_ = UP_TO_DATE;
-        }
-        //            g.compute_graph_features(min_normal_pts_, normal_radius_, edge_min_centroid_offset_);
-        //            fill_field("num_normal_pts", g.num_normal_pts_.begin(), debug_cloud);
-        //            fill_field("ground_diff_std", g.ground_diff_std_.begin(), debug_cloud);
-        //            g.compute_normal_labels();
-        //            fill_field("normal_label", g.labels_.begin(), debug_cloud);
-        //            normal_label_cloud_pub_.publish(debug_cloud);
-        //            // Adjust points labels using constructed NN graph.
-        ////            g.compute_final_labels(max_nn_height_diff_);
-        //            g.compute_final_labels(max_nn_height_diff_, clearance_low_, clearance_high_, min_points_obstacle_,
-        //                    max_ground_diff_std_, max_ground_abs_diff_mean_, min_dist_to_obstacle_);
-
-    }
-
-        /** Resize point buffers if necessary, update wrappers and index. */
-        void reserve(size_t n)
-        {
-            Timer t;
-            if (n < capacity())
-            {
-                return;
-            }
-//            points_buf_ = points_buf_.copy(3 * n);
-//            normals_buf_ = normals_buf_.copy(3 * n);
-//            viewpoints_buf_ = viewpoints_buf_.copy(3 * n);
-//            update_matrix_wrappers(n);
-            cloud_.reserve(n);
-            update_index();
-            ROS_INFO("Capacity increased to %lu points: %.3f s.", n, t.seconds_elapsed());
-        }
-
-//        Elem* end()
-//        {
-//            return points_buf_.begin() + 3 * size();
-//        }
-
-//    Point* end()
-//    {
-//        return cloud_ points_buf_.begin() + 3 * size();
-//    }
-
-//        void merge(flann::Matrix<Elem> points, flann::Matrix<Elem> origin)
-        void merge(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
-        {
-//            Lock lock(snapshot_mutex_);
-            Lock lock(cloud_mutex_);
-            Timer t;
-            ROS_DEBUG("Merging cloud started. Capacity %lu points.", capacity());
-            // TODO: Forbid allocation while in use or lock?
-            reserve(size() + points.rows);
-
-            if (empty())
-            {
-//                auto it_points = end();
-                Point point;
-                for (size_t i = 0; i < points.rows; ++i)
-                {
-//                    *it_points++ = points[i][0];
-//                    *it_points++ = points[i][1];
-//                    *it_points++ = points[i][2];
-                    for (size_t j = 0; j < 3; ++j)
-                    {
-                        point.position_[j] = points[i][j];
-                    }
-                    cloud_.emplace_back(point);
-                }
-//                update_matrix_wrappers(points.rows);
-                update_index();
-                ROS_INFO("Map initialized with %lu points (%.3f s).", points.rows, t.seconds_elapsed());
-                return;
-            }
-
-            // TODO: Update static (hit) / dynamic (see through) points.
-            Timer t_dyn;
-            // Compute input points directions.
-            ConstVec3Map x_origin(origin[0]);
-            Buffer<Elem> dirs_buf(points.rows * points.cols);
-            FlannMat dirs(dirs_buf.begin(), points.rows, points.cols);
-            for (Index i = 0; i < points.rows; ++i)
-            {
-                Vec3Map dir(dirs[i]);
-                dir = ConstVec3Map(points[i]) - x_origin;
-                const Elem norm = dir.norm();
-                if (std::isnan(norm) || std::isinf(norm) || norm < 1e-3)
-                {
-                    ROS_INFO_THROTTLE(1.0, "Could not normalize direction [%.1g, %.1g, %.1g], norm %.1g.",
-                            dir.x(), dir.y(), dir.z(), norm);
-                    dir = Vec3::Zero();
-                }
-                else
-                {
-                    dir /= norm;
-                }
-            }
-            // Create index of view directions.
-            FlannIndex dirs_index(dirs, flann::KDTreeSingleIndexParams());
-            dirs_index.buildIndex();
-
-            // Get map points nearby to check.
-            Elem nearby_dist = 25.;
-            RadiusQuery<Elem> q_nearby(*index_, origin, nearby_dist);
-            Index n_nearby = q_nearby.nn_[0].size();
-            ROS_DEBUG("Found %u points up to %.1f m from sensor (%.3f s).",
-                    n_nearby, nearby_dist, t_dyn.seconds_elapsed());
-//            Buffer<Index> occupied_buf(n_nearby);
-//            Buffer<Index> empty_buf(n_nearby);
-            Buffer<Elem> nearby_dirs_buf(3 * n_nearby);
-            FlannMat nearby_dirs(nearby_dirs_buf.begin(), n_nearby, 3);
-            for (Index i = 0; i < n_nearby; ++i)
-            {
-                const Index v0 = q_nearby.nn_[0][i];
-                Vec3Map dir(nearby_dirs[i]);
-//                dir = ConstVec3Map(points_[v0]) - x_origin;
-                dir = ConstVec3Map(&cloud_[v0].position_[0]) - x_origin;
-                const Elem norm = dir.norm();
-                if (std::isnan(norm) || std::isinf(norm) || norm < 1e-3)
-                {
-                    ROS_INFO_THROTTLE(1.0, "Could not normalize direction [%.1g, %.1g, %.1g], norm %.1g.",
-                            dir.x(), dir.y(), dir.z(), norm);
-                    dir = Vec3::Zero();
-                }
-                else
-                {
-                    dir /= norm;
-                }
-            }
-            int k_dirs = 5;  // Number of closest rays to check.
-            uint16_t max_observations = 15;
-            Query<Elem> q_dirs(dirs_index, nearby_dirs, k_dirs);
-            for (Index i = 0; i < n_nearby; ++i)
-            {
-                const Index v_map = q_nearby.nn_[0][i];
-//                ConstVec3Map x_map(points_[v_map]);
-//                uint16_t empty_orig = empty_buf_[v_map];
-//                ConstVec3Map x_map(&cloud_[v_map].position_[0]);
-//                auto x_map = position_vector(v_map);
-                ConstVec3Map x_map(position(v_map));
-                auto empty_orig = cloud_[v_map].empty_;
-                for (Index j = 0; j < k_dirs; ++j)
-                {
-                    const Index v_new = q_dirs.nn_[i][j];
-                    // TODO: Avoid segfault v_new > size?
-                    // Discarding small clouds seems to do the trick?
-                    if (v_new >= points.rows)
-                    {
-                        ROS_WARN_THROTTLE(1.0, "Skipping invalid NN (%u >= %lu) during merge.", v_new, points.rows);
-                        continue;
-                    }
-                    ConstVec3Map x_new(points[v_new]);
-                    // Match close neighbors as a single static object.
-                    const Elem d = (x_new - x_map).norm();
-                    if (d <= points_min_dist_)
-                    {
-                        // Static / occupied.
-//                        if (occupied_buf_[v_map] >= max_observations)
-//                        {
-//                            occupied_buf_[v_map] /= 2;
-//                            empty_buf_[v_map] /= 2;
-//                        }
-//                        ++occupied_buf_[v_map];
-                        if (cloud_[v_map].occupied_ >= max_observations)
-                        {
-                            cloud_[v_map].occupied_ /= 2;
-                            cloud_[v_map].empty_ /= 2;
-                        }
-                        ++cloud_[v_map].occupied_;
-                        // Clear empty marks from this cloud.
-                        // TODO: Why would we?
-//                        empty_buf_[v_map] = empty_orig;
-                        break;
-                    }
-                    // Discard rays far from the map points.
-                    const Elem d_new = (x_new - x_origin).norm();
-                    if (std::isnan(d_new) || std::isinf(d_new) || d_new < 1e-3)
-                    {
-                        ROS_WARN_THROTTLE(1.0, "Discarding invalid point [%.1g, %.1g, %.1g], distance to origin %.1g.",
-                                x_new.x(), x_new.y(), x_new.z(), d_new);
-                        continue;
-                    }
-                    const Elem line_dist = (x_new - x_origin).cross(x_origin - x_map).norm() / d_new;
-                    if (line_dist / 2. > points_min_dist_)
-                    {
-                        continue;
-                    }
-                    // Does farther point see through the map surface?
-                    const Elem d_map = (x_map - x_origin).norm();
-                    // TODO: To be usable as this normal must have correct orientation.
-//                    ConstVec3Map n_map(normals_[v_map]);
-                    ConstVec3Map n_map(normal(v_map));
-//                    Elem level = n_map.dot(x_new - x_map);
-//                    if (d_new > d_map && level < 0.)
-                    Elem cos = n_map.dot(ConstVec3Map(dirs[v_new]));
-                    if (d_new > d_map && std::abs(cos) > min_empty_cos_)
-                    {
-                        // Dynamic / see through.
-//                        if (occupied_buf_[v_map] >= max_observations)
-//                        {
-//                            occupied_buf_[v_map] /= 2;
-//                            empty_buf_[v_map] /= 2;
-//                        }
-//                        ++empty_buf_[v_map];
-                        if (cloud_[v_map].empty_ >= max_observations)
-                        {
-                            cloud_[v_map].occupied_ /= 2;
-                            cloud_[v_map].empty_ /= 2;
-                        }
-                        ++cloud_[v_map].empty_;
-                    }
-                }
-//                ROS_INFO("Point [%.1f, %.1f, %.1f]: %u occupied, %u empty.",
-//                        x_map.x(), x_map.y(), x_map.z(), occupied_buf_[v_map], empty_buf_[v_map]);
-//                if (empty_buf_[v_map] / occupied_buf_[v_map] >= 4)
-                if (cloud_[v_map].empty_ / cloud_[v_map].occupied_ >= 4)
-                {
-                    // TODO: Remove point?
-                    // Handle this in processing NN.
-                }
-            }
-            ROS_DEBUG("Checking and updating %u static/dynamic points nearby: %.3f s.",
-                    n_nearby, t_dyn.seconds_elapsed());
-
-            // Find NN distance within current map.
-            t.reset();
-            Query<Elem> q(*index_, points, 1);
-            ROS_DEBUG("Input cloud NN searched finished: %.3f s.", t.seconds_elapsed());
-
-            // Merge points with distance to NN higher than threshold.
-            // We'll assume that input points also (approx.) comply to the
-            // same min. distance threshold, so each added point can be tested
-            // separately.
-            t.reset();
-            size_t n_added = 0;
-//            auto it_points = end();
-//            Elem mean = 0.;
-            Elem min_dist_2 = points_min_dist_ * points_min_dist_;
-            for (size_t i = 0; i < points.rows; ++i)
-            {
-//                auto dist = std::sqrt(q.dist_[i][0]);
-//                mean += std::sqrt(q.dist_[i][0]);
-//                ROS_INFO("%lu: %.3f >= %.3f?", i, dist, points_min_dist_);
-//                if (dist >= points_min_dist_)
-                if (q.dist_[i][0] >= min_dist_2)
-                {
-//                    *it_points++ = points[i][0];
-//                    *it_points++ = points[i][1];
-//                    *it_points++ = points[i][2];
-                    Point point;
-                    for (size_t j = 0; j < 3; ++j)
-                    {
-                        point.position_[j] = points[i][j];
-                    }
-                    cloud_.emplace_back(point);
-                    ++n_added;
-                }
-            }
-//            mean /= points.rows;
-//            ROS_INFO("Mean distance to map points: %.3f m.", mean);
-            size_t n_map = size();
-//            update_matrix_wrappers(size() + n_added);
-            // TODO: flann::Index::addPoints (what indices? what with removed indices?)
-            update_index();
-            ROS_INFO("%lu points merged into map with %lu points (%.3f s).", n_added, n_map, t.seconds_elapsed());
-        }
-
-    void create_debug_cloud(sensor_msgs::PointCloud2& cloud)
-    {
-        cloud.point_step = uint32_t(offsetof(Point, position_));
-        append_field<Value>("x", 1, cloud);
-        append_field<Value>("y", 1, cloud);
-        append_field<Value>("z", 1, cloud);
-        cloud.point_step = uint32_t(offsetof(Point, normal_));
-        append_field<Value>("normal_x", 1, cloud);
-        append_field<Value>("normal_y", 1, cloud);
-        append_field<Value>("normal_z", 1, cloud);
-        cloud.point_step = sizeof(Point);
-        sensor_msgs::PointCloud2Modifier modifier(cloud);
-        modifier.resize(cloud_.size());
-        std::copy(&cloud_.front(), &cloud_.back(), &cloud.data.front());
-    }
-
-        void create_cloud(sensor_msgs::PointCloud2& cloud)
-        {
-//            sensor_msgs::PointCloud2Modifier modifier(cloud);
-//            modifier.setPointCloud2Fields(9,
-//                    "x", 1, sensor_msgs::PointField::FLOAT32,
-//                    "y", 1, sensor_msgs::PointField::FLOAT32,
-//                    "z", 1, sensor_msgs::PointField::FLOAT32,
-//                    "normal_x", 1, sensor_msgs::PointField::FLOAT32,
-//                    "normal_y", 1, sensor_msgs::PointField::FLOAT32,
-//                    "normal_z", 1, sensor_msgs::PointField::FLOAT32,
-//                    "occupied", 1, sensor_msgs::PointField::UINT16,
-//                    "empty", 1, sensor_msgs::PointField::UINT16,
-//                    "dynamic", 1, sensor_msgs::PointField::FLOAT32);
-//            FlannMat points;
-//            snapshot(points);
-//            modifier.resize(points.rows);
-//
-//            sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x");
-//            sensor_msgs::PointCloud2Iterator<float> nx_it(cloud, "normal_x");
-//            sensor_msgs::PointCloud2Iterator<uint16_t> occupied_it(cloud, "occupied");
-//            sensor_msgs::PointCloud2Iterator<uint16_t> empty_it(cloud, "empty");
-//            sensor_msgs::PointCloud2Iterator<float> dynamic_it(cloud, "dynamic");
-//            for (size_t i = 0; i < points.rows; ++i, ++x_it, ++nx_it, ++occupied_it, ++empty_it, ++dynamic_it)
-//            {
-//                x_it[0] = points[i][0];
-//                x_it[1] = points[i][1];
-//                x_it[2] = points[i][2];
-//                nx_it[0] = normals_[i][0];
-//                nx_it[1] = normals_[i][1];
-//                nx_it[2] = normals_[i][2];
-//                *occupied_it = occupied_buf_[i];
-//                *empty_it = empty_buf_[i];
-//                *dynamic_it = float(empty_buf_[i]) / occupied_buf_[i];
-//            }
-            create_debug_cloud(cloud);
-        }
-
-    size_t capacity() const
-    {
-//            return points_buf_.size() / 3;
-        return cloud_.capacity();
-    }
-
-    size_t size() const
-    {
-        // TODO: Lock? Make thread safe?
-//            return points_.rows;
-        return cloud_.size();
-    }
-
-    size_t empty() const
-    {
-//            return size() == 0;
-        return cloud_.empty();
-    }
-
-    std::vector<Point>& get_cloud()
-    {
-        return cloud_;
-    }
-
-    const std::vector<Point>& get_cloud() const
-    {
-        return cloud_;
-    }
-
-        float points_min_dist_;
-        float min_empty_cos_;
-
-    protected:
-
-        Value radius_;
-        Value edge_min_rel_centroid_offset_;
-
-//        Buffer<Elem> points_buf_;
-//        Buffer<Elem> normals_buf_;
-        Buffer<Elem> viewpoints_buf_;
-//        Buffer<uint16_t> occupied_buf_;
-//        Buffer<uint16_t> empty_buf_;
-
-        typedef std::recursive_mutex Mutex;
-        typedef std::lock_guard<Mutex> Lock;
-//        Mutex snapshot_mutex_;
-//        flann::Matrix<Elem> points_;
-//        flann::Matrix<Elem> normals_;
-//        flann::Matrix<Elem> viewpoints_;
-
-        Mutex cloud_mutex_;
-        std::vector<Point> cloud_;
-//        sensor_msgs::PointCloud2 cloud_;
-//        sensor_msgs::PointCloud2Modifier cloud_modifier_;
-//        // NB: Iterators are initialized only once. Avoid using iter.end() as
-//        //   this won't be valid!
-//        std::shared_ptr<sensor_msgs::PointCloud2Iterator<Value>> x_iter_;
-//        // NN Graph
-//        std::shared_ptr<sensor_msgs::PointCloud2Iterator<Index>> nn_count_iter_;
-//        sensor_msgs::PointCloud2Iterator<Index> nn_iter_;
-//        // Viewpoint (for occupancy assessment and measurement distance)
-//        sensor_msgs::PointCloud2Iterator<Value> vp_x_iter_;
-//        // Geometric features
-////        sensor_msgs::PointCloud2Iterator<Value> normal_x_iter_;
-//        sensor_msgs::PointCloud2Iterator<int8_t> normal_x_iter_;
-//        // Normal scale is common
-////        sensor_msgs::PointCloud2Iterator<Value> normal_scale_iter_;
-//        sensor_msgs::PointCloud2Iterator<uint8_t> normal_support_iter_;
-//        // Occupancy
-//        sensor_msgs::PointCloud2Iterator<uint8_t> empty_iter_;
-//        sensor_msgs::PointCloud2Iterator<uint8_t> occupied_iter_;
-//        // Traversability labels
-//        sensor_msgs::PointCloud2Iterator<uint8_t> normal_label_iter_;
-//        sensor_msgs::PointCloud2Iterator<uint8_t> func_label_iter_;
-//        // Planning costs and rewards
-//        sensor_msgs::PointCloud2Iterator<Value> path_cost_iter_;
-////        sensor_msgs::PointCloud2Iterator<Value> min_vp_dist_;
-////        sensor_msgs::PointCloud2Iterator<Value> min_other_vp_dist_;
-//        sensor_msgs::PointCloud2Iterator<Value> reward_iter_;
-//        sensor_msgs::PointCloud2Iterator<Value> rel_cost_iter_;
-//        // Index metadata
-//        // unindexed
-//        // indexed
-//        // to_update
-//        sensor_msgs::PointCloud2Iterator<uint8_t> index_state_iter_;
-
-        Mutex index_mutex_;
-        std::shared_ptr<flann::Index<flann::L2_3D<Elem>>> index_;
-
-//        Parameters params_;
-    };
-
-class NotInitialized: public std::runtime_error
-{
-public:
-    NotInitialized(const char* what):
-            std::runtime_error(what)
-    {}
-};
-
     class Planner
     {
     public:
@@ -1219,37 +507,39 @@ public:
                 nh_(nh),
                 pnh_(pnh),
                 tf_(),
-                position_name_("x"),
-                normal_name_("normal_x"),
-                map_frame_(""),
-                robot_frame_("base_footprint"),
-                robot_frames_(),
-                max_cloud_age_(5.),
-                max_pitch_(30. / 180. * M_PI),
-                max_roll_(30. / 180. * M_PI),
-                empty_ratio_(2),
-                filter_robots_(false),
-                neighborhood_knn_(12),
-                neighborhood_radius_(.5),
-                min_normal_pts_(9),
-                normal_radius_(0.5),
-                max_nn_height_diff_(0.15),
-                viewpoints_update_freq_(1.),
+//                position_name_("x"),
+//                normal_name_("normal_x"),
+//                map_frame_(""),
+//                robot_frame_("base_footprint"),
+//                robot_frames_(),
+//                max_cloud_age_(5.),
+//                max_pitch_(30. / 180. * M_PI),
+//                max_roll_(30. / 180. * M_PI),
+//                empty_ratio_(2),
+//                filter_robots_(false),
+//                neighborhood_knn_(12),
+//                neighborhood_radius_(.5),
+//                min_normal_pts_(9),
+//                normal_radius_(0.5),
+//                max_nn_height_diff_(0.15),
+//                viewpoints_update_freq_(1.),
                 viewpoints_(),
-                clearance_low_(0.15),
-                clearance_high_(0.8),
-                min_points_obstacle_(3),
-                max_ground_diff_std_(0.1),
-                max_ground_abs_diff_mean_(0.1),
-                edge_min_centroid_offset_(0.75),
-                min_dist_to_obstacle_(0.7),
+//                clearance_low_(0.15),
+//                clearance_high_(0.8),
+//                min_points_obstacle_(3),
+//                max_ground_diff_std_(0.1),
+//                max_ground_abs_diff_mean_(0.1),
+//                edge_min_centroid_offset_(0.75),
+//                min_dist_to_obstacle_(0.7),
                 other_viewpoints_(),
-                min_vp_distance_(1.5),
-                max_vp_distance_(5.),
-                self_factor_(0.25),
-                planning_freq_(0.5),
+//                min_vp_distance_(1.5),
+//                max_vp_distance_(5.),
+//                self_factor_(0.25),
+//                planning_freq_(0.5),
                 initialized_(false),
-                queue_size_(5.)
+//                queue_size_(5.)
+//                params_(),
+                map_()
         {
             // Invalid position invokes exploration mode.
             last_request_.start.pose.position.x = std::numeric_limits<double>::quiet_NaN();
@@ -1588,9 +878,10 @@ public:
                     return false;
                 }
             }
-            ROS_DEBUG("Planning request received. Plan from [%.2f, %.2f, %.2f] to [%.1f, %.2f, %.2f].",
+            ROS_INFO("Planning from [%.1f, %.1f, %.1f] to [%.1f, %.1f, %.1f] with tolerance %.1f.",
                     req.start.pose.position.x, req.start.pose.position.y, req.start.pose.position.z,
-                    req.goal.pose.position.x, req.goal.pose.position.y, req.goal.pose.position.z);
+                    req.goal.pose.position.x, req.goal.pose.position.y, req.goal.pose.position.z,
+                    req.tolerance);
             {
                 Lock lock(last_request_mutex_);
                 last_request_ = req;
@@ -1625,26 +916,15 @@ public:
 
             size_t min_map_points = 64;
 //            if (points.rows < min_map_points)
-            if (map_.get_cloud().size() < min_map_points)
+//            if (map_.get_cloud().size() < min_map_points)
+            if (map_.size() < min_map_points)
             {
                 ROS_ERROR("Cannot plan in map with %lu < %lu points.",
-                    map_.get_cloud().size(), min_map_points);
+                    map_.size(), min_map_points);
                 return false;
             }
 
             // Moved to input_map_received above.
-
-            // Initialize debug cloud for visualization of intermediate results.
-            sensor_msgs::PointCloud2 debug_cloud;
-//            create_debug_cloud(points, normals, debug_cloud);
-            map_.create_debug_cloud(debug_cloud);
-
-            debug_cloud.header.frame_id = map_frame_;
-            // TODO: Refresh on sending?
-            debug_cloud.header.stamp = ros::Time::now();
-            // Reconstruct original 2D shape.
-            debug_cloud.height = 1;
-            debug_cloud.width = uint32_t(map_.get_cloud().size());
 
             // Get robot positions.
             std::vector<Elem> robots;
@@ -1667,39 +947,65 @@ public:
             // TODO: Index rebuild incrementally with new points.
 //            g.build_index();
             map_.update_graph();
+            map_.update_features();
+
+            // Create debug cloud for visualization of intermediate results.
+            sensor_msgs::PointCloud2 debug_cloud;
+//            create_debug_cloud(points, normals, debug_cloud);
+            map_.create_debug_cloud(debug_cloud);
+
+            debug_cloud.header.frame_id = map_frame_;
+            // TODO: Refresh on sending?
+            debug_cloud.header.stamp = ros::Time::now();
+            // Reconstruct original 2D shape.
+            debug_cloud.height = 1;
+//            debug_cloud.width = uint32_t(map_.get_cloud().size());
+            debug_cloud.width = uint32_t(map_.size());
 //            g.compute_graph(neighborhood_knn_, neighborhood_radius_);
 //            g.recompute_normals(min_normal_pts_, normal_radius_);
-            g.compute_graph_features(min_normal_pts_, normal_radius_, edge_min_centroid_offset_);
-            fill_field("num_normal_pts", g.num_normal_pts_.begin(), debug_cloud);
-            fill_field("ground_diff_std", g.ground_diff_std_.begin(), debug_cloud);
-            g.compute_normal_labels();
-            fill_field("normal_label", g.labels_.begin(), debug_cloud);
-            normal_label_cloud_pub_.publish(debug_cloud);
+//            g.compute_graph_features(min_normal_pts_, normal_radius_, edge_min_centroid_offset_);
+//            fill_field("num_normal_pts", g.num_normal_pts_.begin(), debug_cloud);
+//            fill_field("ground_diff_std", g.ground_diff_std_.begin(), debug_cloud);
+//            g.compute_normal_labels();
+//            fill_field("normal_label", g.labels_.begin(), debug_cloud);
+//            normal_label_cloud_pub_.publish(debug_cloud);
             // Adjust points labels using constructed NN graph.
 //            g.compute_final_labels(max_nn_height_diff_);
-            g.compute_final_labels(max_nn_height_diff_, clearance_low_, clearance_high_, min_points_obstacle_,
-                    max_ground_diff_std_, max_ground_abs_diff_mean_, min_dist_to_obstacle_);
-            fill_field("ground_diff_min", g.ground_diff_min_.begin(), debug_cloud);
-            fill_field("ground_diff_max", g.ground_diff_max_.begin(), debug_cloud);
-            fill_field("ground_abs_diff_mean", g.ground_abs_diff_mean_.begin(), debug_cloud);
-            fill_field("num_obstacle_pts", g.num_obstacle_pts_.begin(), debug_cloud);
-            fill_field("final_label", g.labels_.begin(), debug_cloud);
-            final_label_cloud_pub_.publish(debug_cloud);
+//            g.compute_final_labels(max_nn_height_diff_, clearance_low_, clearance_high_, min_points_obstacle_,
+//                    max_ground_diff_std_, max_ground_abs_diff_mean_, min_dist_to_obstacle_);
+//            fill_field("ground_diff_min", g.ground_diff_min_.begin(), debug_cloud);
+//            fill_field("ground_diff_max", g.ground_diff_max_.begin(), debug_cloud);
+//            fill_field("ground_abs_diff_mean", g.ground_abs_diff_mean_.begin(), debug_cloud);
+//            fill_field("num_obstacle_pts", g.num_obstacle_pts_.begin(), debug_cloud);
+//            fill_field("final_label", g.labels_.begin(), debug_cloud);
+//            final_label_cloud_pub_.publish(debug_cloud);
 
             // Use the nearest traversable point to robot as the starting point.
-            Vec3 start_position(start.pose.position.x, start.pose.position.y, start.pose.position.z);
+            Vec3 start_position(float(start.pose.position.x),
+                                float(start.pose.position.y),
+                                float(start.pose.position.z));
             size_t tol = 32;
             if (req.tolerance > 0.)
             {
-                tol = std::min(size_t(req.tolerance), g.points_.rows);
+//                tol = std::min(size_t(req.tolerance), g.points_.rows);
+//                tol = std::min(size_t(req.tolerance), map_.get_cloud().size());
+                tol = std::min(size_t(req.tolerance), map_.cloud_.size());
             }
-            Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), tol);
-            // Get traversable points.
+//            Query<Elem> start_query(g.points_index_, flann::Matrix<Elem>(start_position.data(), 1, 3), tol);
             std::vector<Elem> traversable;
             traversable.reserve(tol);
+{
+    // TODO: Make tolerance a distance instead of number of nearest points.
+    Lock lock(map_.index_mutex_);
+            Query<Value> start_query(*map_.index_, FlannMat(start_position.data(), 1, 3), tol);
+            // Get traversable points.
             for (const auto& v: start_query.nn_buf_)
             {
-                if (g.labels_[v] == TRAVERSABLE || g.labels_[v] == EDGE)
+//                if (g.labels_[v] == TRAVERSABLE || g.labels_[v] == EDGE)
+//                if (map_.get_cloud()[v].functional_label_ == TRAVERSABLE
+//                        || map_.get_cloud()[v].functional_label_ == EDGE)
+                if (map_.cloud_[v].functional_label_ == TRAVERSABLE
+                        || map_.cloud_[v].functional_label_ == EDGE)
                 {
                     traversable.push_back(v);
                 }
@@ -1710,6 +1016,7 @@ public:
                         start_position.x(), start_position.y(), start_position.z());
                 return false;
             }
+}
 //            Vertex v_start = start_query.nn_buf_[0];
             // Get random traversable point as start.
             Vertex v_start = traversable[std::rand() % traversable.size()];
@@ -1727,17 +1034,32 @@ public:
 //                    min_dist = dist;
 //                }
 //            }
-            ROS_INFO("Planning from [%.1f, %.1f, %.1f], robot at [%.1f, %.1f, %.1f], %lu traversable points nearby.",
-                    g.points_[v_start][0], g.points_[v_start][1], g.points_[v_start][2],
-                    start_position.x(), start_position.y(), start_position.z(), traversable.size());
+//            ROS_INFO("Planning from [%.1f, %.1f, %.1f], robot at [%.1f, %.1f, %.1f], %lu traversable points nearby.",
+//                    g.points_[v_start][0], g.points_[v_start][1], g.points_[v_start][2],
+//                    start_position.x(), start_position.y(), start_position.z(), traversable.size());
+            ROS_INFO("Request from [%.1f, %.1f, %.1f],"
+                     "robot at [%.1f, %.1f, %.1f] with %lu traversable points nearby,"
+                     "planning from [%.1f, %.1f, %.1f].",
+                     req.start.pose.position.x,
+                     req.start.pose.position.y,
+                     req.start.pose.position.z,
+                     map_.cloud_[v_start].position_[0],
+                     map_.cloud_[v_start].position_[1],
+                     map_.cloud_[v_start].position_[2],
+                     traversable.size(),
+                     start_position.x(),
+                     start_position.y(),
+                     start_position.z());
 
             // TODO: Append starting pose as a special vertex with orientation dependent edges.
             // Note, that for some worlds and robots, the neighborhood must be quite large to get traversable points.
             // See e.g. X1 @ cave_circuit_practice_01.
 
+            Graph g(map_);
+
             // Plan in NN graph with approx. travel time costs.
             Buffer<Vertex> predecessor(g.num_vertices());
-            Buffer<Elem> path_costs(g.num_vertices());
+            Buffer<Value> path_costs(g.num_vertices());
             EdgeCosts edge_costs(g);
             boost::typed_identity_property_map<Vertex> index_map;
 
@@ -2179,8 +1501,8 @@ public:
 
         Mutex viewpoints_mutex_;
         float viewpoints_update_freq_;
-        std::vector<Elem> viewpoints_;  // 3xN
-        std::vector<Elem> other_viewpoints_;  // 3xN
+        std::vector<Value> viewpoints_;  // 3xN
+        std::vector<Value> other_viewpoints_;  // 3xN
 //        std::map<std::string, Vec3> last_positions_;
         float min_vp_distance_;
         float max_vp_distance_;
@@ -2193,6 +1515,7 @@ public:
         int queue_size_;
         Mutex map_mutex_;
         Map map_;
+//        Parameters params_;
     };
 
 }  // namespace naex

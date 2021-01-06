@@ -3,7 +3,8 @@
 
 #include <boost/chrono.hpp>
 
-namespace naex {
+namespace naex
+{
 
 class Timer
 {
@@ -13,10 +14,19 @@ private:
     typedef boost::chrono::duration<double> Duration;
     Time start;
 public:
-    Timer(): start(Clock::now()) {}
-    Timer(const Time &s): start(s) {}
-    Timer(const Timer &s): start(s.start) {}
-    void reset() { start = Clock::now(); }
+    Timer()
+        : start(Clock::now())
+    {}
+    Timer(const Time& s)
+        : start(s)
+    {}
+    Timer(const Timer& s)
+        : start(s.start)
+    {}
+    void reset()
+    {
+        start = Clock::now();
+    }
     double seconds_elapsed() const
     {
         return boost::chrono::duration_cast<Duration>(Clock::now() - start).count();
@@ -25,4 +35,4 @@ public:
 
 }
 
-#endif //NAEX_TIMER_H
+#endif  // NAEX_TIMER_H
