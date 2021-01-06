@@ -9,14 +9,18 @@ find_package(Eigen3 REQUIRED NO_MODULE)
 
 find_package(OpenMP REQUIRED)
 
-find_package(PkgConfig)
-pkg_check_modules(Flann REQUIRED)
-include_directories(${Flann_INCLUDE_DIR})
-link_directories(${Flann_LIBDIR})
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(eigen REQUIRED eigen3)
+include_directories(${eigen_INCLUDE_DIRS})
+link_directories(${eigen_LIBRARY_DIRS})
 
-pkg_check_modules(LZ4 REQUIRED)
-include_directories(${LZ4_INCLUDE_DIRS})
-link_directories(${LZ4_LIBRARY_DIR})
+pkg_check_modules(flann REQUIRED flann)
+include_directories(${flann_INCLUDE_DIRS})
+link_directories(${flann_LIBRARY_DIRS})
+
+pkg_check_modules(lz4 REQUIRED liblz4)
+include_directories(${lz4_INCLUDE_DIRS})
+link_directories(${lz4_LIBRARY_DIRS})
 
 include_directories(include)
 
@@ -43,7 +47,7 @@ catkin_package(
 
 # https://stackoverflow.com/a/51448364/3456661
 add_executable(planner src/planner_node.cpp)
-target_link_libraries(planner ${catkin_LIBRARIES} Eigen3::Eigen ${Flann_LIBRARY} lz4 OpenMP::OpenMP_CXX)
+target_link_libraries(planner ${catkin_LIBRARIES} ${eigen_LIBRARIES} ${flann_LIBRARIES} ${lz4_LIBRARIES} OpenMP::OpenMP_CXX)
 #target_link_libraries(planner PRIVATE Eigen3::Eigen)
 #target_link_libraries(planner ${catkin_LIBRARIES} ${Flann_LIBRARY} lz4 OpenMP::OpenMP_CXX)
 
