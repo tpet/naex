@@ -12,7 +12,8 @@ namespace naex
 // Basic floating-point and index types
 typedef float Elem;
 typedef Elem Value;
-typedef uint32_t Index;
+//typedef uint32_t Index;
+typedef int Index;
 
 // Arrays and matrices
 typedef Eigen::Matrix<Value, 3, 1, Eigen::DontAlign> Vec3;
@@ -43,24 +44,43 @@ typedef std::shared_ptr<const FlannIndex> ConstFlannIndexPtr;
 
 //    namespace IndexState
 //    {
-enum IndexState
-{
-    TO_UPDATE = 0,
-    UP_TO_DATE = 1
-};
+//enum IndexState
+//{
+//    TO_UPDATE = 0,
+//    UP_TO_DATE = 1
+//};
 //    }
 
 //    namespace Label
 //    {
-enum Label
+//enum Label
+//{
+//    UNKNOWN = 0,
+//    EMPTY = 1,
+//    TRAVERSABLE = 2,
+//    EDGE = 3,
+//    ACTOR = 4,
+//    OBSTACLE = 5
+//};
+
+enum Flags
 {
-    UNKNOWN = 0,
-    EMPTY = 1,
-    TRAVERSABLE = 2,
-    EDGE = 3,
-    ACTOR = 4,
-    OBSTACLE = 5
+    // Point was updated including its neighborhood. Otherwise it's queued for
+    // updated.
+    UPDATED     = 1u << 0,
+    // A static point, not dynamic or empty, necessary for being traversable.
+    STATIC      = 1u << 1,
+    // Approximately horizontal orientation based on normal direction,
+    // necessary for being traversable.
+    HORIZONTAL  = 1u << 2,
+    // Traversable based on terrain roughness and obstacles in neighborhood.
+    TRAVERSABLE = 1u << 3,
+    // A point at the edge, i.e. a frontier.
+    EDGE        = 1u << 4,
+    // Near an other actor.
+    ACTOR       = 1u << 5,
 };
+
 //    }
 //typedef Buffer<uint8_t> Labels;
 
@@ -69,42 +89,60 @@ const Vertex INVALID_VERTEX = std::numeric_limits<Vertex>::max();
 class Point
 {
 public:
-    static const Index K_NEIGHBORS = 32;
     Value position_[3];
     // Geometric features
     // TODO: More compact normal representation? Maybe just for sharing,
     // impacts on memory is small compared to neighbors.
     Value normal_[3];
-    Index normal_support_;  // Normal scale is common to all points
-    // Roughness features.
+//    int8 normal_[3];
+    // Normal scale is common to all points.
+    // Number of points used in normal computation.
+    uint8_t normal_support_;
+    // Roughness features (in neighborhood radius).
     // from ball neighborhood
-    Value ground_diff_std_;
+    int8_t ground_diff_std_;
     // circle in ground plane
-    Value ground_diff_min_;
-    Value ground_diff_max_;
-    Value ground_abs_diff_mean_;
+    int8_t min_ground_diff_;
+    int8_t max_ground_diff_;
+    int8_t ground_abs_diff_mean_;
     // Viewpoint (for occupancy assessment and measurement distance)
     Value viewpoint_[3];
     // Occupancy
-    uint8_t empty_;
-    uint8_t occupied_;
+    // Distance to other actors.
+    Value dist_to_actor_;
+    // Point flags accoring to Flags.
+    uint8_t flags_;
+    // Number of occurences of empty/occupied state.
+    uint8_t num_empty_;
+    uint8_t num_occupied_;
+    // Number of obstacles nearby.
     uint8_t num_obstacle_pts_;
+    // Edge flag.
+//    uint8_t edge_;
+    // Number of edge points nearby.
     uint8_t num_edge_neighbors_;
-    uint8_t normal_label_;
-    uint8_t functional_label_;
+    // Label based on normal direction (normal already needs graph).
+//    uint8_t normal_label_;
+    // Label based on terrain roughness.
+//    uint8_t functional_label_;
     // Planning costs and rewards
     Value path_cost_;
     Value reward_;
     Value relative_cost_;
+};
+
+class Neighborhood
+{
+public:
+    static const Index K_NEIGHBORS = 32;
+    Value position_[3];
     // NN Graph
+    // Number of valid entries in neighbors_ and distances_.
     Index neighbor_count_;
     Index neighbors_[K_NEIGHBORS];
     Value distances_[K_NEIGHBORS];
-    // Index state:
-    // unindexed = 0
-    // dirty / to update = 1
-    // indexed = 2
-    uint8_t index_state_;
+    // Index state from IndexState enum.
+    // uint8_t index_state_;
 };
 
 }  // namespace naex

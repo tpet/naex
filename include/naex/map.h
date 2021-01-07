@@ -28,10 +28,24 @@ public:
         // Parameter defaults
         points_min_dist_(.2f),
         min_empty_cos_(.3f),
+        // Occupancy
         empty_ratio_(2.f),
         neighborhood_radius_(.6f),
         traversable_radius_(neighborhood_radius_),
-        edge_min_centroid_offset_(.75f)
+        edge_min_centroid_offset_(.75f),
+        // Traversability
+//        max_nn_height_diff_(.15),
+        min_ground_diff_(-.1),
+        max_ground_diff_(.3),
+        clearance_low_(.15),
+        clearance_high_(.8),
+        min_points_obstacle_(3),
+        max_ground_diff_std_(0.1),
+        max_ground_abs_diff_mean_(0.1),
+        min_dist_to_obstacle_(0.7),
+        max_pitch_(30. / 180. * M_PI),
+        max_roll_(30. / 180. * M_PI)
+
     {
         cloud_.reserve(DEFAULT_CAPACITY);
     }
@@ -50,10 +64,14 @@ public:
             return flann::Matrix<int>();
         }
         // TODO: Inconsistency between boost graph (Index = uint32) and flann (int).
-        return flann::Matrix<int>(reinterpret_cast<int*>(cloud_[0].neighbors_),
-                                  cloud_.size(),
-                                  3,
-                                  sizeof(Point));
+//        return flann::Matrix<int>(reinterpret_cast<int*>(cloud_[0].neighbors_),
+//                                  graph_.size(),
+//                                  3,
+//                                  sizeof(Point));
+        return flann::Matrix<int>(reinterpret_cast<int*>(graph_[0].neighbors_),
+                                  graph_.size(),
+                                  Neighborhood::K_NEIGHBORS,
+                                  sizeof(Neighborhood));
     }
 
     Value* position(size_t i)
@@ -76,12 +94,18 @@ public:
         return &cloud_[i].normal_[0];
     }
 
+//    template<T>
+//    bool flag(T value, T flag)
+//    {
+//        return flag & value;
+//    }
+
     bool point_empty(Index i)
     {
-        return float(cloud_[i].empty_) / cloud_[i].occupied_ >= empty_ratio_;
+        return float(cloud_[i].num_empty_) / cloud_[i].num_occupied_ >= empty_ratio_;
     }
 
-    bool point_near_any(Index i, const std::vector<Value>& points, Value radius)
+    bool point_near(Index i, const std::vector<Value>& points, Value radius)
     {
         for (Index j = 0; j + 2 < points.size(); j += 3)
         {
@@ -99,11 +123,13 @@ public:
         const auto v1_index = target_index(e);
         const auto v1 = target(e);
 //            if (labels_[v0] != TRAVERSABLE || labels_[v1] != TRAVERSABLE)
-        if (cloud_[v1].functional_label_ != TRAVERSABLE)
+//        if (cloud_[v1].functional_label_ != TRAVERSABLE)
+        if (!(cloud_[v1].flags_ & TRAVERSABLE))
         {
             return std::numeric_limits<Cost>::infinity();
         }
-        Cost d = std::sqrt(cloud_[v0].distances_[v1_index]);
+//        Cost d = std::sqrt(cloud_[v0].distances_[v1_index]);
+        Cost d = std::sqrt(graph_[v0].distances_[v1_index]);
         if (d > traversable_radius_)
         {
             return std::numeric_limits<Cost>::infinity();
@@ -134,6 +160,7 @@ public:
 //            d *= (1.f + (pitch0 + pitch1 + inclination) / 3.f / max_pitch_ + (roll0 + roll1) / 2.f / max_roll_);
         d *= (1.f + (inclination / max_pitch_));
 //            std::cout << v0 << " -> " << v1 << ": " << d << std::endl;
+        // TODO: Make distance correspond to expected travel time.
         return d;
     }
 
@@ -180,13 +207,15 @@ public:
             if (std::abs(cloud_[i].normal_[i][2]) >= min_z)
             {
                 // Approx. horizontal based on normal.
-                cloud_[i].normal_label_ = TRAVERSABLE;
+//                cloud_[i].normal_label_ = TRAVERSABLE;
+                cloud_[i].flags_ |= HORIZONTAL;
                 ++n_traverable;
             }
             else  // if (std::abs(normals_[i][2]) < min_z)
             {
                 // Approx. vertical based on normal.
-                cloud_[i].normal_label_ = OBSTACLE;
+//                cloud_[i].normal_label_ = OBSTACLE;
+                cloud_[i].flags_ &= ~HORIZONTAL;
                 ++n_obstacle;
             }
         }
@@ -194,37 +223,68 @@ public:
                  (end - begin), n_traverable, n_obstacle, t.seconds_elapsed());
     }
 
-    void update_graph()
+    std::vector<Index> collect_points_to_update()
     {
+        std::vector<Index> indices;
+//        indices.reserve(cloud_.size());
+        for (Index i = 0; i < cloud_.size(); ++i)
+        {
+            if (!(cloud_[i].flags_ & UPDATED))
+            {
+                indices.push_back(i);
+            }
+        }
+        return indices;
+    }
+
+    template<typename It>
+    void update_graph(It begin, It end)
+    {
+        // NB: It should be stable iteration order.
         Timer t;
 
-        class GraphPoint
-        {
-        public:
-            Value position_[3];
-            // Number of valid entries in neighbors_ and distances_.
-            Index neighbor_count_;
-            int neighbors_[Point::K_NEIGHBORS];
-            Value distances_[Point::K_NEIGHBORS];
-        };
+//        class GraphPoint
+//        {
+//        public:
+//            Value position_[3];
+//            // Number of valid entries in neighbors_ and distances_.
+//            Index neighbor_count_;
+//            int neighbors_[Point::K_NEIGHBORS];
+//            Value distances_[Point::K_NEIGHBORS];
+//        };
 
         // Collect points to updated.
         // TODO: Append to a list on the fly for faster collection here?
-        std::vector<Index> dirty_indices;
-        std::vector<GraphPoint> dirty_cloud;
-        dirty_indices.reserve(cloud_.size());
-        dirty_cloud.reserve(cloud_.size());
-        for (Index i = 0; i < cloud_.size(); ++i) {
-            if (cloud_[i].index_state_ < 2) {
-                dirty_indices.push_back(i);
-                GraphPoint graph_point;
-                std::copy(cloud_[i].position_,
-                          cloud_[i].position_ + 3,
-                          graph_point.position_);
-                dirty_cloud.emplace_back(graph_point);
-            }
+//        std::vector<Index> dirty_indices;
+//        std::vector<Neighborhood> dirty_cloud;
+//        dirty_indices.reserve(cloud_.size());
+//        dirty_cloud.reserve(cloud_.size());
+//        for (Index i = 0; i < cloud_.size(); ++i) {
+//            if (!(cloud_[i].flags_ & UPDATED)) {
+//                dirty_indices.push_back(i);
+//                Neighborhood neighborhood;
+//                std::copy(cloud_[i].position_,
+//                          cloud_[i].position_ + 3,
+//                          neighborhood.position_);
+//                dirty_cloud.emplace_back(neighborhood);
+//            }
+//        }
+
+//        std::vector<Index> dirty_indices;
+        std::vector<Neighborhood> dirty_cloud;
+//        dirty_indices.reserve(cloud_.size());
+        dirty_cloud.reserve(end - begin);
+        for (It it = begin; it != end; ++it)
+        {
+            Neighborhood neighborhood;
+            std::copy(cloud_[*it].position_,
+                      cloud_[*it].position_ + 3,
+                      neighborhood.position_);
+            dirty_cloud.emplace_back(neighborhood);
         }
-        if (dirty_cloud.empty()) {
+
+        if (dirty_cloud.empty())
+        {
             ROS_INFO("Graph up to date (no points to update): %.3f s.",
                      t.seconds_elapsed());
             return;
@@ -233,15 +293,15 @@ public:
         flann::Matrix<Value> positions(dirty_cloud[0].position_,
                                        dirty_cloud.size(),
                                        3,
-                                       sizeof(GraphPoint));
-        flann::Matrix<int> neighbors(dirty_cloud[0].neighbors_,
+                                       sizeof(Neighborhood));
+        flann::Matrix<Index> neighbors(dirty_cloud[0].neighbors_,
                                      dirty_cloud.size(),
-                                     Point::K_NEIGHBORS,
-                                     sizeof(GraphPoint));
+                                     Neighborhood::K_NEIGHBORS,
+                                     sizeof(Neighborhood));
         flann::Matrix<Value> distances(dirty_cloud[0].distances_,
                                        dirty_cloud.size(),
-                                       Point::K_NEIGHBORS,
-                                       sizeof(GraphPoint));
+                                       Neighborhood::K_NEIGHBORS,
+                                       sizeof(Neighborhood));
 
         flann::SearchParams params;
         params.checks = 64;
@@ -253,18 +313,30 @@ public:
             index_->knnSearch(positions,
                               neighbors,
                               distances,
-                              Point::K_NEIGHBORS,
+                              Neighborhood::K_NEIGHBORS,
                               params);
         }
         // Propagate NN info into the main graph.
-        for (Index i = 0; i < dirty_indices.size(); ++i) {
-            std::copy(dirty_cloud[i].neighbors_,
-                      dirty_cloud[i].neighbors_ + Point::K_NEIGHBORS,
-                      cloud_[dirty_indices[i]].neighbors_);
-            std::copy(dirty_cloud[i].distances_,
-                      dirty_cloud[i].distances_ + Point::K_NEIGHBORS,
-                      cloud_[dirty_indices[i]].distances_);
+//        for (Index i = 0; i < dirty_indices.size(); ++i)
+//        {
+//            std::copy(dirty_cloud[i].neighbors_,
+//                      dirty_cloud[i].neighbors_ + Neighborhood::K_NEIGHBORS,
+//                      graph_[dirty_indices[i]].neighbors_);
+//            std::copy(dirty_cloud[i].distances_,
+//                      dirty_cloud[i].distances_ + Neighborhood::K_NEIGHBORS,
+//                      graph_[dirty_indices[i]].distances_);
+//        }
+        auto point_it = dirty_cloud.begin();
+        for (It it = begin; it != end; ++it, ++point_it)
+        {
+            std::copy((*point_it).neighbors_,
+                      (*point_it).neighbors_ + Neighborhood::K_NEIGHBORS,
+                      graph_[*it].neighbors_);
+            std::copy((*point_it).distances_,
+                      (*point_it).distances_ + Neighborhood::K_NEIGHBORS,
+                      graph_[*it].distances_);
         }
+
         ROS_INFO("Updating NN graph at %lu / %lu pts: %.3f s.",
                  dirty_cloud.size(), cloud_.size(), t.seconds_elapsed());
         // TODO: Update features and labels.
@@ -277,7 +349,7 @@ public:
     inline Edge num_edges() const
     {
         // TODO: Compute true number based on valid neighbors.
-        return num_vertices() * Point::K_NEIGHBORS;
+        return num_vertices() * Neighborhood::K_NEIGHBORS;
     }
     inline std::pair<VertexIter, VertexIter> vertices() const
     {
@@ -287,28 +359,29 @@ public:
     {
         // TODO: Limit to valid edges here or just by costs?
 //        return { u * num_edges(), (u + 1) * num_edges() };
-        return { u * Point::K_NEIGHBORS, (u + 1) * Point::K_NEIGHBORS };
+        return { u * Neighborhood::K_NEIGHBORS, (u + 1) * Neighborhood::K_NEIGHBORS };
     }
     inline Edge out_degree(const Vertex& u) const
     {
         // TODO: Compute true number based on valid neighbors.
 //        return num_edges();
-        return Point::K_NEIGHBORS;
+        return Neighborhood::K_NEIGHBORS;
     }
     inline Vertex source(const Edge& e) const
     {
 //        return e / num_edges();
-        return e / Point::K_NEIGHBORS;
+        return e / Neighborhood::K_NEIGHBORS;
     }
     inline Vertex target_index(const Edge& e) const
     {
 //        return e % num_edges();
-        return e % Point::K_NEIGHBORS;
+        return e % Neighborhood::K_NEIGHBORS;
     }
     inline Vertex target(const Edge& e) const
     {
 //        return nn_[source(e)][target_index(e)];
-        return cloud_[source(e)].neighbors_[target_index(e)];
+//        return cloud_[source(e)].neighbors_[target_index(e)];
+        return graph_[source(e)].neighbors_[target_index(e)];
     }
 
     template<typename It>
@@ -324,22 +397,27 @@ public:
         for (It it = begin; it != end; ++it)
         {
             auto i = *it;
-            if (cloud_[i].index_state_ == UP_TO_DATE) {
+//            if (cloud_[i].index_state_ == UP_TO_DATE)
+            if (cloud_[i].flags_ & UPDATED)
+            {
                 continue;
             }
-            assert(cloud_[i].index_state_ == TO_UPDATE);
+            assert(!(cloud_[i].index_state_ & UPDATED));
 
             //***
-            // Disregard empty points.
-            if (cloud_[i].functional_label_ == EMPTY) {
+            // Disregard empty / dynamic points.
+//            if (cloud_[i].functional_label_ == EMPTY)
+            if (!(cloud_[i].flags_ & STATIC))
+            {
                 continue;
             }
             Vec3 mean = Vec3::Zero();
             Mat3 cov = Mat3::Zero();
 //            num_normal_pts_[v0] = 0;
             cloud_[i].normal_support_ = 0;
-            for (Index j = 0; j < Point::K_NEIGHBORS; ++j) {
-                if (std::isinf(cloud_[i].distances_[j])) {
+            for (Index j = 0; j < Neighborhood::K_NEIGHBORS; ++j) {
+                if (std::isinf(cloud_[i].distances_[j]))
+                {
                     continue;
                 }
 //            for (size_t j = 0; j < nn_.cols; ++j)
@@ -347,7 +425,9 @@ public:
 //                Index v1 = nn_[v0][j];
                 Index k = cloud_[i].neighbors_[j];
                 // Disregard empty points.
-                if (cloud_[k].functional_label_ == EMPTY) {
+//                if (cloud_[k].functional_label_ == EMPTY)
+                if (!(cloud_[k].flags_ & STATIC))
+                {
                     continue;
                 }
                 if (cloud_[i].distances_[j] <= radius2) {
@@ -371,13 +451,137 @@ public:
             normal = solver.eigenvectors().col(0);
             cloud_[i].ground_diff_std_ = std::sqrt(solver.eigenvalues()(0));
             // Inject support label here where we have computed mean.
-            if ((mean - ConstVec3Map(cloud_[i].position_)).norm()
-                > edge_min_centroid_offset_ * semicircle_centroid_offset) {
+            const auto centroid_offset = (mean - ConstVec3Map(cloud_[i].position_)).norm();
+            if (centroid_offset > edge_min_centroid_offset_ * semicircle_centroid_offset)
+            {
                 cloud_[i].functional_label_ = EDGE;
             }
 
-            cloud_[i].index_state_ = UP_TO_DATE;
+            // Index state is to be updated in update_graph.
+//            cloud_[i].index_state_ = UP_TO_DATE;
         }
+    }
+
+    template<typename It>
+    void compute_final_labels(It begin, It end)
+    {
+        Timer t;
+        Index n_traverable = 0, n_empty = 0, n_unknown = 0, n_edge = 0, n_actor = 0, n_obstacle = 0;
+//        for (Vertex v0 = 0; v0 < nn_.rows; ++v0)
+        for (It it = begin; it != end; ++it)
+        {
+            const auto v0 = *it;
+//            num_edge_neighbors_[v0] = 0;
+//            cloud_[v0].num
+            // Disregard empty points.
+//            if (point_empty(v0))
+            if (!(cloud_[v0].flags_ & STATIC))
+            {
+                ++n_empty;
+                continue;
+            }
+            for (Vertex j = 0; j < Neighborhood::K_NEIGHBORS; ++j)
+            {
+                const auto v1 = cloud_[v0].neighbors_[j];
+                if (cloud_[v1].edge_ == EDGE)
+                {
+                    ++cloud_[v0].num_edge_neighbors_;
+                }
+            }
+            if (cloud_[v0].flags_ & EDGE)
+            {
+                ++n_edge;
+                continue;
+            }
+            else if (cloud_[v0].flags_ & ACTOR)
+            {
+                ++n_actor;
+                continue;
+            }
+            // Adjust only traversable points.
+//                if (labels_[v0] != TRAVERSABLE)
+//                {
+//                    continue;
+//                }
+            // Compute ground features for all points.
+//                Elem min_height_diff = std::numeric_limits<Elem>::infinity();
+//                Elem max_height_diff = -std::numeric_limits<Elem>::infinity();
+            cloud_[v0].ground_diff_min_ = std::numeric_limits<Elem>::infinity();
+            cloud_[v0].ground_diff_max_ = -std::numeric_limits<Elem>::infinity();
+            cloud_[v0].ground_abs_diff_mean_ = 0.;
+            uint8_t n = 0;
+//                uint8_t n_points_obstacle;
+            cloud_[v0].num_obstacle_pts_ = 0;
+            for (size_t j = 0; j < Neighborhood::K_NEIGHBORS; ++j)
+            {
+                const auto v1 = graph_[v0].neighbors[j];
+                // Disregard empty points.
+                if (!(cloud_[v1].flags_ & STATIC))
+                {
+                    continue;
+                }
+                // Avoid driving near obstacles.
+                // TODO: Use clearance as hard constraint and distance to obstacles as costs.
+                // Hard constraint can be removed with min_dist_to_obstacle_.
+                if (!(cloud_[v1].flags_ & HORIZONTAL)
+                        && graph_[v0].distances_[j] <= min_dist_to_obstacle_)
+                {
+                    n_unknown += bool(cloud_[v0].flags_ &= TRAVERSABLE);
+                    cloud_[v0].flags_ &= ~TRAVERSABLE;
+//                    ++n_unknown;
+//                        break;
+                }
+                Vec3Map n0(cloud_[v0].normal_);
+                Vec3Map p0(cloud_[v1].position_);
+                Vec3Map p1(cloud_[v1].position_);
+                Value height_diff = n0.dot(p1 - p0);
+                Vec3 ground_pt = p1 - height_diff * n0;
+                Value ground_dist = (ground_pt - p0).norm();
+
+                if (ground_dist <= traversable_radius_)
+                {
+                    cloud_[v0].ground_diff_min_ = std::min(cloud_[v0].ground_diff_min_, height_diff);
+                    cloud_[v0].ground_diff_max_ = std::max(cloud_[v0].ground_diff_max_, height_diff);
+                    cloud_[v0].ground_abs_diff_mean_ += std::abs(height_diff);
+                    ++n;
+                    if (height_diff >= clearance_low_ && height_diff <= clearance_high_)
+                    {
+                        ++cloud_[v0].num_obstacle_pts_;
+                    }
+                }
+//                    ROS_INFO("height diff.: %.2f m, ground dist.: %.2f m", height_diff, ground_dist);
+//                    if (ground_dist > radius_)
+//                    {
+//                        continue;
+//                    }
+//                    if (std::abs(height_diff) > max_nn_height_diff)
+//                    if (max_height_diff - min_height_diff > max_nn_height_diff)
+//                    {
+//                        labels_[v0] = UNKNOWN;
+//                        ++n_adjusted;
+//                        break;
+//                    }
+            }
+            cloud_[v0].ground_abs_diff_mean_  /= n;
+            if ((cloud_[v0].flags_ & STATIC & HORIZONTAL)
+                    && cloud_[v0].num_obstacle_pts_ < min_points_obstacle_
+                    && cloud_[v0].min_ground_diff_ >= min_ground_diff_
+                    && cloud_[v0].max_ground_diff_ <= max_ground_diff_
+                    && cloud_[v0].ground_diff_std_ <= max_ground_diff_std_
+                    && cloud_[v0].ground_abs_diff_mean_ <= max_ground_abs_diff_mean_)
+            {
+                ++n_traverable;
+//                n_unknown += bool(cloud_[v0].flags_ &= TRAVERSABLE);
+                cloud_[v0].flags_ |= TRAVERSABLE;
+            }
+            else
+            {
+                ++n_unknown;
+                cloud_[v0].flags_ &= ~TRAVERSABLE;
+            }
+        }
+        ROS_INFO("%lu final labels: %u traversable, %u empty, %u unknown, %u edge, %u actor, %u obstacle (%.3f s).",
+                 end - begin, n_traverable, n_empty, n_unknown, n_edge, n_actor, n_obstacle, t.seconds_elapsed());
     }
 
     /** Resize point buffers if necessary, update wrappers and index. */
@@ -633,74 +837,90 @@ public:
 
     Mutex cloud_mutex_;
     std::vector<Point> cloud_;
+    std::vector<Neighborhood> graph_;
     Mutex index_mutex_;
     std::shared_ptr<flann::Index<flann::L2_3D<Value>>> index_;
 
-    // Parameters
+    // Map parameters
     float points_min_dist_;
-
+    // Occupancy
     float min_empty_cos_;
     float empty_ratio_;
-
+    // Graph
     float neighborhood_radius_;
     float traversable_radius_;
-
+    // Traversability
     float edge_min_centroid_offset_;
-
+//    float max_nn_height_diff_;
+    float min_ground_diff_;
+    float max_ground_diff_;
+    float clearance_low_;
+    float clearance_high_;
+    float min_points_obstacle_;
+    float max_ground_diff_std_;
+    float max_ground_abs_diff_mean_;
+    float min_dist_to_obstacle_;
     float max_pitch_;
     float max_roll_;
 };
 
 /** https://www.boost.org/doc/libs/1_75_0/libs/graph/doc/adjacency_list.html */
-//class Graph
-//{
-//public:
-//    Graph(const Map& map):
-//        map_(map)
-//    {}
-//    inline Vertex num_vertices() const
-//    {
-//        return map_.size();
-//    }
-//    /** Returns the number of edges in the graph g. */
-//    inline Edge num_edges() const
-//    {
-//        // TODO: Compute true number based on valid neighbors.
+class Graph
+{
+public:
+    Graph(const Map& map):
+        map_(map)
+    {}
+    inline Vertex num_vertices() const
+    {
+        return map_.num_vertices();
+    }
+    /** Returns the number of edges in the graph g. */
+    inline Edge num_edges() const
+    {
+        // TODO: Compute true number based on valid neighbors.
 //        return num_vertices() * Point::K_NEIGHBORS;
-//    }
-//    inline std::pair<VertexIter, VertexIter> vertices() const
-//    {
+        return map_.num_edges();
+    }
+    inline std::pair<VertexIter, VertexIter> vertices() const
+    {
 //        return { 0, num_vertices() };
-//    }
-//    inline std::pair<EdgeIter, EdgeIter> out_edges(const Vertex& u) const
-//    {
-//        // TODO: Limit to valid edges here or just by costs?
-////        return { u * num_edges(), (u + 1) * num_edges() };
+        return map_.vertices();
+    }
+    inline std::pair<EdgeIter, EdgeIter> out_edges(const Vertex& u) const
+    {
+        // TODO: Limit to valid edges here or just by costs?
+//        return { u * num_edges(), (u + 1) * num_edges() };
 //        return { u * Point::K_NEIGHBORS, (u + 1) * Point::K_NEIGHBORS };
-//    }
-//    inline Edge out_degree(const Vertex& u) const
-//    {
-//        // TODO: Compute true number based on valid neighbors.
-////        return num_edges();
+        return map_.out_edges(u);
+    }
+    inline Edge out_degree(const Vertex& u) const
+    {
+        // TODO: Compute true number based on valid neighbors.
+//        return num_edges();
 //        return Point::K_NEIGHBORS;
-//    }
-//    inline Vertex source(const Edge& e) const
-//    {
-////        return e / num_edges();
+        return map_.out_degree(u);
+    }
+    inline Vertex source(const Edge& e) const
+    {
+//        return e / num_edges();
 //        return e / Point::K_NEIGHBORS;
-//    }
-//    inline Vertex target_index(const Edge& e) const
-//    {
-////        return e % num_edges();
+        return map_.source(e);
+    }
+    inline Vertex target_index(const Edge& e) const
+    {
+//        return e % num_edges();
 //        return e % Point::K_NEIGHBORS;
-//    }
-//    inline Vertex target(const Edge& e) const
-//    {
-////        return nn_[source(e)][target_index(e)];
+        return map_.target_index(e);
+    }
+    inline Vertex target(const Edge& e) const
+    {
+//        return nn_[source(e)][target_index(e)];
 //        return map_.cloud_[source(e)].neighbors_[target_index(e)];
-//    }
-//    const Map& map_;
-//};
+        return map_.target(e);
+    }
+    const Map& map_;
+};
 
 class EdgeCosts
 {
