@@ -219,61 +219,61 @@ namespace naex
         cloud.row_step = width * cloud.point_step;
     }
 
-    template<typename P, typename N>
-    void create_debug_cloud(
-            const flann::Matrix<P>& points,
-            const flann::Matrix<N>& normals,
-            sensor_msgs::PointCloud2& cloud)
-    {
-        sensor_msgs::PointCloud2Modifier modifier(cloud);
-        modifier.setPointCloud2Fields(19,
-                "x", 1, sensor_msgs::PointField::FLOAT32,
-                "y", 1, sensor_msgs::PointField::FLOAT32,
-                "z", 1, sensor_msgs::PointField::FLOAT32,
-                "normal_x", 1, sensor_msgs::PointField::FLOAT32,
-                "normal_y", 1, sensor_msgs::PointField::FLOAT32,
-                "normal_z", 1, sensor_msgs::PointField::FLOAT32,
-                "num_normal_pts", 1, sensor_msgs::PointField::UINT8,
-                "ground_diff_std", 1, sensor_msgs::PointField::FLOAT32,
-                "ground_diff_min", 1, sensor_msgs::PointField::FLOAT32,
-                "ground_diff_max", 1, sensor_msgs::PointField::FLOAT32,
-                "ground_abs_diff_mean", 1, sensor_msgs::PointField::FLOAT32,
-                "num_obstacle_pts", 1, sensor_msgs::PointField::UINT8,
-                "normal_label", 1, sensor_msgs::PointField::UINT8,
-                "final_label", 1, sensor_msgs::PointField::UINT8,
-                "path_cost", 1, sensor_msgs::PointField::FLOAT32,
-                "utility", 1, sensor_msgs::PointField::FLOAT32,
-                "final_cost", 1, sensor_msgs::PointField::FLOAT32,
-                "occupied", 1, sensor_msgs::PointField::UINT16,
-                "empty", 1, sensor_msgs::PointField::UINT16);
-        modifier.resize(points.rows);
-
-        sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x"), nx_it(cloud, "normal_x");
-        for (size_t i = 0; i < points.rows; ++i, ++x_it, ++nx_it)
-        {
-            x_it[0] = points[i][0];
-            x_it[1] = points[i][1];
-            x_it[2] = points[i][2];
-            nx_it[0] = normals[i][0];
-            nx_it[1] = normals[i][1];
-            nx_it[2] = normals[i][2];
-        }
-        fill_const_field("num_normal_pts", uint8_t(0), cloud);
-        fill_const_field("ground_diff_std", std::numeric_limits<float>::quiet_NaN(), cloud);
-        fill_const_field("ground_diff_min", std::numeric_limits<float>::quiet_NaN(), cloud);
-        fill_const_field("ground_diff_max", std::numeric_limits<float>::quiet_NaN(), cloud);
-        fill_const_field("ground_abs_diff_mean", std::numeric_limits<float>::quiet_NaN(), cloud);
-        fill_const_field("num_obstacle_pts", uint8_t(0), cloud);
-
-        fill_const_field("normal_label", uint8_t(UNKNOWN), cloud);
-        fill_const_field("final_label", uint8_t(UNKNOWN), cloud);
-        fill_const_field("path_cost", std::numeric_limits<float>::quiet_NaN(), cloud);
-        fill_const_field("utility", std::numeric_limits<float>::quiet_NaN(), cloud);
-        fill_const_field("final_cost", std::numeric_limits<float>::quiet_NaN(), cloud);
-
-        fill_const_field("occupied", uint16_t(0), cloud);
-        fill_const_field("empty", uint16_t(0), cloud);
-    }
+//    template<typename P, typename N>
+//    void create_debug_cloud(
+//            const flann::Matrix<P>& points,
+//            const flann::Matrix<N>& normals,
+//            sensor_msgs::PointCloud2& cloud)
+//    {
+//        sensor_msgs::PointCloud2Modifier modifier(cloud);
+//        modifier.setPointCloud2Fields(19,
+//                "x", 1, sensor_msgs::PointField::FLOAT32,
+//                "y", 1, sensor_msgs::PointField::FLOAT32,
+//                "z", 1, sensor_msgs::PointField::FLOAT32,
+//                "normal_x", 1, sensor_msgs::PointField::FLOAT32,
+//                "normal_y", 1, sensor_msgs::PointField::FLOAT32,
+//                "normal_z", 1, sensor_msgs::PointField::FLOAT32,
+//                "num_normal_pts", 1, sensor_msgs::PointField::UINT8,
+//                "ground_diff_std", 1, sensor_msgs::PointField::FLOAT32,
+//                "ground_diff_min", 1, sensor_msgs::PointField::FLOAT32,
+//                "ground_diff_max", 1, sensor_msgs::PointField::FLOAT32,
+//                "ground_abs_diff_mean", 1, sensor_msgs::PointField::FLOAT32,
+//                "num_obstacle_pts", 1, sensor_msgs::PointField::UINT8,
+//                "normal_label", 1, sensor_msgs::PointField::UINT8,
+//                "final_label", 1, sensor_msgs::PointField::UINT8,
+//                "path_cost", 1, sensor_msgs::PointField::FLOAT32,
+//                "utility", 1, sensor_msgs::PointField::FLOAT32,
+//                "final_cost", 1, sensor_msgs::PointField::FLOAT32,
+//                "occupied", 1, sensor_msgs::PointField::UINT16,
+//                "empty", 1, sensor_msgs::PointField::UINT16);
+//        modifier.resize(points.rows);
+//
+//        sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x"), nx_it(cloud, "normal_x");
+//        for (size_t i = 0; i < points.rows; ++i, ++x_it, ++nx_it)
+//        {
+//            x_it[0] = points[i][0];
+//            x_it[1] = points[i][1];
+//            x_it[2] = points[i][2];
+//            nx_it[0] = normals[i][0];
+//            nx_it[1] = normals[i][1];
+//            nx_it[2] = normals[i][2];
+//        }
+//        fill_const_field("num_normal_pts", uint8_t(0), cloud);
+//        fill_const_field("ground_diff_std", std::numeric_limits<float>::quiet_NaN(), cloud);
+//        fill_const_field("ground_diff_min", std::numeric_limits<float>::quiet_NaN(), cloud);
+//        fill_const_field("ground_diff_max", std::numeric_limits<float>::quiet_NaN(), cloud);
+//        fill_const_field("ground_abs_diff_mean", std::numeric_limits<float>::quiet_NaN(), cloud);
+//        fill_const_field("num_obstacle_pts", uint8_t(0), cloud);
+//
+//        fill_const_field("normal_label", uint8_t(UNKNOWN), cloud);
+//        fill_const_field("final_label", uint8_t(UNKNOWN), cloud);
+//        fill_const_field("path_cost", std::numeric_limits<float>::quiet_NaN(), cloud);
+//        fill_const_field("utility", std::numeric_limits<float>::quiet_NaN(), cloud);
+//        fill_const_field("final_cost", std::numeric_limits<float>::quiet_NaN(), cloud);
+//
+//        fill_const_field("occupied", uint16_t(0), cloud);
+//        fill_const_field("empty", uint16_t(0), cloud);
+//    }
 
     template<typename P>
     void create_xyz_cloud(

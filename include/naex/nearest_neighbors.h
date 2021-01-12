@@ -25,6 +25,16 @@ size_t invalid_index<size_t>()
     return std::numeric_limits<size_t>::max();
 }
 
+bool invalid_index(int i)
+{
+    return i < 0;
+}
+
+bool invalid_index(size_t i)
+{
+    return i == std::numeric_limits<size_t>::max();
+}
+
 template<typename V>
 V invalid_distance();
 
@@ -44,6 +54,21 @@ template<>
 long invalid_distance<long>()
 {
     return 0L;
+}
+
+bool invalid_distance(float d)
+{
+    return std::isinf(d);
+}
+
+bool invalid_distance(double d)
+{
+    return std::isinf(d);
+}
+
+bool invalid_distance(long d)
+{
+    return d == 0L;
 }
 
 template<typename I, typename V>

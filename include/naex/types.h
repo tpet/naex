@@ -67,18 +67,18 @@ enum Flags
 {
     // Point was updated including its neighborhood. Otherwise it's queued for
     // updated.
-    UPDATED     = 1u << 0,
+    UPDATED     = 1 << 0,
     // A static point, not dynamic or empty, necessary for being traversable.
-    STATIC      = 1u << 1,
+    STATIC      = 1 << 1,
     // Approximately horizontal orientation based on normal direction,
     // necessary for being traversable.
-    HORIZONTAL  = 1u << 2,
+    HORIZONTAL  = 1 << 2,
     // Traversable based on terrain roughness and obstacles in neighborhood.
-    TRAVERSABLE = 1u << 3,
+    TRAVERSABLE = 1 << 3,
     // A point at the edge, i.e. a frontier.
-    EDGE        = 1u << 4,
+    EDGE        = 1 << 4,
     // Near an other actor.
-    ACTOR       = 1u << 5,
+    ACTOR       = 1 << 5,
 };
 
 //    }
@@ -89,10 +89,14 @@ const Vertex INVALID_VERTEX = std::numeric_limits<Vertex>::max();
 class Point
 {
 public:
+    Point()
+    {}
+
     Value position_[3];
     // Geometric features
     // TODO: More compact normal representation? Maybe just for sharing,
     // impacts on memory is small compared to neighbors.
+    // TODO: Switch to compact (u)int8 types where possible.
     Value normal_[3];
 //    int8 normal_[3];
     // Normal scale is common to all points.
@@ -100,11 +104,11 @@ public:
     uint8_t normal_support_;
     // Roughness features (in neighborhood radius).
     // from ball neighborhood
-    int8_t ground_diff_std_;
+    Value ground_diff_std_;
     // circle in ground plane
-    int8_t min_ground_diff_;
-    int8_t max_ground_diff_;
-    int8_t ground_abs_diff_mean_;
+    Value min_ground_diff_;
+    Value max_ground_diff_;
+    Value mean_abs_ground_diff_;
     // Viewpoint (for occupancy assessment and measurement distance)
     Value viewpoint_[3];
     // Occupancy

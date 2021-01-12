@@ -5,7 +5,9 @@
 #ifndef NAEX_GRAPH_H
 #define NAEX_GRAPH_H
 
-//using namespace naex;
+#include <naex/map.h>
+
+using namespace naex;
 
 namespace boost
 {

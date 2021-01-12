@@ -17,6 +17,7 @@
 #include <naex/array.h>
 #include <naex/buffer.h>
 #include <naex/clouds.h>
+#include <naex/exceptions.h>
 #include <naex/iterators.h>
 #include <naex/map.h>
 #include <naex/nearest_neighbors.h>
@@ -37,462 +38,6 @@ namespace naex
 {
     typedef ValueIterator<Vertex> VertexIter;
     typedef ValueIterator<Edge> EdgeIter;
-
-    class Graph
-    {
-    public:
-        Graph(flann::Matrix<Elem> points, flann::Matrix<Elem> normals,
-                Buffer<uint16_t> occupied, Buffer<uint16_t> empty,
-                float max_pitch, float max_roll, uint16_t empty_ratio):
-                points_(points),
-//                points_index_(points_, flann::KDTreeIndexParams(2)),
-                points_index_(points_, flann::KDTreeSingleIndexParams()),
-                normals_(normals),
-                occupied_(occupied),
-                empty_(empty),
-                labels_(points_.rows),
-                num_edge_neighbors_(points_.rows),
-                max_pitch_(max_pitch),
-                max_roll_(max_roll),
-                empty_ratio_(empty_ratio)
-        {
-            // TODO: First, split points to (maybe) traversable and (hard) obstacles.
-            // Traversable:
-            // - approx. horizontal based on normal (with correct orientation).
-            // - nearby points below ground
-            // Obstacles:
-            // - approx. vertical based on normal (allow opposite orientation).
-//            compute_normal_labels();
-        }
-
-        bool is_empty(const uint16_t occupied, const uint16_t empty)
-        {
-            return empty / occupied >= empty_ratio_;
-        }
-
-        void compute_occupancy_labels(const std::vector<Elem>& robots)
-        {
-            Timer t;
-            Index n_empty = 0;
-            for (Index v = 0; v < points_.rows; ++v)
-            {
-                if (is_empty(occupied_[v], empty_[v]))
-                {
-                    labels_[v] = EMPTY;
-                    ++n_empty;
-                    continue;
-                }
-                // Avoid other robots.
-                for (Index i = 0; i + 2 < robots.size(); i += 3)
-                {
-                    if ((ConstVec3Map(points_[v]) - ConstVec3Map(&robots[i])).norm() <= 1.5f * radius_)
-                    {
-//                        ROS_INFO("[%.1f, %.1f, %.1f] within %.1f m from robot [%.1f, %.1f, %.1f].",
-//                                points_[v][0], points_[v][0], points_[v][0], radius_,
-//                                robots[i], robots[i + 1],robots[i + 2]);
-                        labels_[v] = ACTOR;
-                        break;
-                    }
-                }
-            }
-            ROS_DEBUG("%u / %lu map points empty (%.3f s).",
-                    n_empty, points_.rows, t.seconds_elapsed());
-        }
-
-        /** Traversability based on normal direction. */
-        void compute_normal_labels()
-        {
-            Timer t;
-            // Maximum slope allowed in some direction.
-            auto max_slope = std::max(max_pitch_, max_roll_);
-            auto min_z = std::cos(max_slope);
-            Index n_traverable = 0, n_empty = 0, n_unknown = 0, n_edge = 0, n_actor = 0, n_obstacle = 0;
-            for (size_t i = 0; i < normals_.rows; ++i)
-            {
-                if (labels_[i] == EMPTY)
-                {
-                    ++n_empty;
-                }
-                else if (labels_[i] == EDGE)
-                {
-                    ++n_edge;
-                }
-                else if (labels_[i] == ACTOR)
-                {
-                    ++n_actor;
-                }
-                else if (std::abs(normals_[i][2]) >= min_z)
-                {
-                    // Approx. horizontal based on normal (with correct orientation).
-                    labels_[i] = TRAVERSABLE;
-                    ++n_traverable;
-                }
-                else if (std::abs(normals_[i][2]) < min_z)
-                {
-                    // Approx. vertical based on normal (allow orientation mismatch).
-                    labels_[i] = OBSTACLE;
-                    ++n_obstacle;
-                }
-                else
-                {
-                    // (Currently unreachable)
-                    labels_[i] = UNKNOWN;
-                    ++n_unknown;
-                }
-            }
-            ROS_DEBUG("%lu vertex labels: %u traversable, %u empty, %u unknown, %u edge, %u actor, %u obstacle (%.3f s).",
-                    normals_.rows, n_traverable, n_empty, n_unknown, n_edge, n_actor, n_obstacle, t.seconds_elapsed());
-        }
-
-        void compute_graph_features(size_t min_normal_pts, Elem radius, Elem edge_min_rel_centroid_offset)
-        {
-            Timer t;
-            const float semicircle_centroid_offset = 4. * radius_ / (3. * M_PI);
-            num_normal_pts_.resize(nn_.rows);
-            ground_diff_std_.resize(nn_.rows);
-
-            size_t n_computed = 0;
-            for (Vertex v0 = 0; v0 < nn_.rows; ++v0)
-            {
-                // Disregard empty points.
-                if (labels_[v0] == EMPTY)
-                {
-                    continue;
-                }
-                Vec3 mean = Vec3::Zero();
-                num_normal_pts_[v0] = 0;
-                for (size_t j = 0; j < nn_.cols; ++j)
-                {
-                    Index v1 = nn_[v0][j];
-                    // Disregard empty points.
-                    if (labels_[v1] == EMPTY)
-                    {
-                        continue;
-                    }
-                    if (dist_[v0][j] <= radius)
-                    {
-                        mean += ConstVec3Map(points_[v1]);
-                        ++num_normal_pts_[v0];
-                    }
-                }
-//                if (n < min_normal_pts)
-//                {
-//                    continue;
-//                }
-//                mean /= n;
-                mean /= num_normal_pts_[v0];
-                Mat3 cov = Mat3::Zero();
-                for (size_t j = 0; j < nn_.cols; ++j)
-                {
-                    Index v1 = nn_[v0][j];
-                    // Disregard empty points.
-                    if (labels_[v1] == EMPTY)
-                    {
-                        continue;
-                    }
-                    if (dist_[v0][j] <= radius)
-                    {
-                        Vec3 pc = (ConstVec3Map(points_[v1]) - mean);
-                        cov += pc * pc.transpose();
-                    }
-                }
-//                cov /= (n + 1);
-//                cov /= (num_normal_pts_[v0] + 1);
-                cov /= num_normal_pts_[v0];
-                Eigen::SelfAdjointEigenSolver<Mat3> solver(cov);
-                // solver.eigenvalues();
-                Vec3Map normal(normals_[v0]);
-                normal = solver.eigenvectors().col(0);
-                ground_diff_std_[v0] = std::sqrt(solver.eigenvalues()(0));
-//                ground_diff_min_
-//                ++n_computed;
-                // Inject support label here where we have computed mean.
-//                labels_
-                if ((mean - ConstVec3Map(points_[v0])).norm()
-                        > edge_min_rel_centroid_offset * semicircle_centroid_offset)
-                {
-                    labels_[v0] = EDGE;
-                }
-            }
-            ROS_DEBUG("Normals recomputed for %lu points from %lu nn within %.2g m: %.3f s.",
-                    nn_.rows, nn_.cols, radius_, t.seconds_elapsed());
-        }
-
-        /** Traversability based on NN graph. */
-        void compute_final_labels(Elem max_nn_height_diff_, Elem clearance_low, Elem clearance_high,
-                Vertex min_points_obstacle, Elem max_ground_diff_std, Elem max_ground_abs_diff_mean,
-                Elem min_dist_to_obstacle)
-        {
-            Timer t;
-            ground_diff_min_.resize(nn_.rows);
-            ground_diff_max_.resize(nn_.rows);
-            ground_abs_diff_mean_.resize(nn_.rows);
-            num_obstacle_pts_.resize(nn_.rows);
-            // Maximum slope allowed in some direction.
-            Index n_traverable = 0, n_empty = 0, n_unknown = 0, n_edge = 0, n_actor = 0, n_obstacle = 0;
-//            ROS_INFO("NN rows: %lu, cols %lu", nn_.rows, nn_.cols);
-            for (Vertex v0 = 0; v0 < nn_.rows; ++v0)
-            {
-                num_edge_neighbors_[v0] = 0;
-                for (Vertex j = 0; j < nn_.cols; ++j)
-                {
-                    const auto v1 = nn_[v0][j];
-                    if (labels_[v1] == EDGE)
-                    {
-                        ++num_edge_neighbors_[v0];
-                    }
-                }
-                // Disregard empty points.
-                if (labels_[v0] == EMPTY)
-                {
-                    ++n_empty;
-                    continue;
-                }
-                else if (labels_[v0] == EDGE)
-                {
-                    ++n_edge;
-                    continue;
-                }
-                else if (labels_[v0] == ACTOR)
-                {
-                    ++n_actor;
-                    continue;
-                }
-                // Adjust only traversable points.
-//                if (labels_[v0] != TRAVERSABLE)
-//                {
-//                    continue;
-//                }
-                // Compute ground features for all points.
-//                Elem min_height_diff = std::numeric_limits<Elem>::infinity();
-//                Elem max_height_diff = -std::numeric_limits<Elem>::infinity();
-                ground_diff_min_[v0] = std::numeric_limits<Elem>::infinity();
-                ground_diff_max_[v0] = -std::numeric_limits<Elem>::infinity();
-                ground_abs_diff_mean_[v0] = 0.;
-                uint8_t n = 0;
-//                uint8_t n_points_obstacle;
-                num_obstacle_pts_[v0] = 0;
-                for (size_t j = 0; j < nn_.cols; ++j)
-                {
-                    const auto v1 = nn_[v0][j];
-                    // Disregard empty points.
-                    if (labels_[v1] == EMPTY)
-                    {
-                        continue;
-                    }
-                    // Avoid driving near obstacles.
-                    if (labels_[v0] == TRAVERSABLE && labels_[v1] == OBSTACLE && dist_[v0][j] <= min_dist_to_obstacle)
-                    {
-                        labels_[v0] = UNKNOWN;
-                        ++n_unknown;
-//                        break;
-                    }
-                    Elem height_diff = Vec3Map(normals_[v0]).dot(Vec3Map(points_[v1]) - Vec3Map(points_[v0]));
-                    Vec3 ground_pt = Vec3Map(points_[v1]) - height_diff * Vec3Map(normals_[v0]);
-                    Elem ground_dist = (ground_pt - Vec3Map(points_[v0])).norm();
-
-                    if (ground_dist <= radius_)
-                    {
-                        if (height_diff < ground_diff_min_[v0])
-                        {
-                            ground_diff_min_[v0] = height_diff;
-                        }
-                        if (height_diff > ground_diff_max_[v0])
-                        {
-                            ground_diff_max_[v0] = height_diff;
-                        }
-                        ground_abs_diff_mean_[v0] += std::abs(height_diff);
-                        ++n;
-                        if (height_diff >= clearance_low && height_diff <= clearance_high)
-                        {
-                            ++num_obstacle_pts_[v0];
-                        }
-                    }
-//                    ROS_INFO("height diff.: %.2f m, ground dist.: %.2f m", height_diff, ground_dist);
-//                    if (ground_dist > radius_)
-//                    {
-//                        continue;
-//                    }
-//                    if (std::abs(height_diff) > max_nn_height_diff)
-//                    if (max_height_diff - min_height_diff > max_nn_height_diff)
-//                    {
-//                        labels_[v0] = UNKNOWN;
-//                        ++n_adjusted;
-//                        break;
-//                    }
-                }
-                ground_abs_diff_mean_[v0] /= n;
-                if (labels_[v0] == TRAVERSABLE
-                        && (num_obstacle_pts_[v0] >= min_points_obstacle
-                            || ground_diff_max_[v0] - ground_diff_min_[v0] > max_nn_height_diff_
-                            || ground_diff_std_[v0] > max_ground_diff_std
-                            || ground_abs_diff_mean_[v0] > max_ground_abs_diff_mean))
-                {
-                    labels_[v0] = UNKNOWN;
-                    ++n_unknown;
-                }
-                else if (labels_[v0] == TRAVERSABLE)
-                {
-                    ++n_traverable;
-                }
-                else if (labels_[v0] == OBSTACLE)
-                {
-                    ++n_obstacle;
-                }
-            }
-            ROS_INFO("%lu final labels: %u traversable, %u empty, %u unknown, %u edge, %u actor, %u obstacle (%.3f s).",
-                    normals_.rows, n_traverable, n_empty, n_unknown, n_edge, n_actor, n_obstacle, t.seconds_elapsed());
-        }
-
-        void build_index()
-        {
-            Timer t;
-            points_index_.buildIndex();
-            ROS_DEBUG("Building index for %lu pts: %.3f s.", points_.rows, t.seconds_elapsed());
-        }
-
-        void compute_graph(Vertex k, Elem radius)
-        {
-            Timer t;
-            nn_buf_.resize(num_vertices() * k);
-            dist_buf_.resize(num_vertices() * k);
-            dist_ = flann::Matrix<Elem>(dist_buf_.begin(), num_vertices(), k);
-            nn_ = flann::Matrix<int>(nn_buf_.begin(), num_vertices(), k);
-            t.reset();
-            flann::SearchParams params;
-            params.checks = 64;
-            params.cores = 0;
-//            params.max_neighbors = k;
-//            points_index_.radiusSearch(points_, nn_, dist_, radius, params);
-            points_index_.knnSearch(points_, nn_, dist_, k, params);
-            k_ = k;
-            radius_ = radius;
-            ROS_DEBUG("NN graph (%lu pts): %.3f s.", points_.rows, t.seconds_elapsed());
-        }
-
-        inline Vertex num_vertices() const
-        {
-            return points_.rows;
-        }
-        inline Edge num_edges() const
-        {
-            return nn_.cols;
-        }
-        inline std::pair<VertexIter, VertexIter> vertices() const
-        {
-            return { 0, num_vertices() };
-        }
-
-        inline std::pair<EdgeIter, EdgeIter> out_edges(const Vertex& u) const
-        {
-            // TODO: Limit to valid edges here or just by costs?
-            return { u * num_edges(), (u + 1) * num_edges() };
-        }
-        inline Edge out_degree(const Vertex& u) const
-        {
-            return num_edges();
-        }
-        inline Vertex source(const Edge& e) const
-        {
-            return e / num_edges();
-        }
-        inline Vertex target_index(const Edge& e) const
-        {
-            return e % num_edges();
-        }
-        inline Vertex target(const Edge& e) const
-        {
-            return nn_[source(e)][target_index(e)];
-        }
-        inline Cost cost(const Edge& e) const
-        {
-            const auto v0 = source(e);
-            const auto v1_index = target_index(e);
-            const auto v1 = target(e);
-//            if (labels_[v0] != TRAVERSABLE || labels_[v1] != TRAVERSABLE)
-            if (labels_[v1] != TRAVERSABLE)
-            {
-                return std::numeric_limits<Cost>::infinity();
-            }
-            Cost d = std::sqrt(dist_[v0][v1_index]);
-            if (d > radius_)
-            {
-                return std::numeric_limits<Cost>::infinity();
-            }
-            Elem height_diff = points_[v1][2] - points_[v0][2];
-            Elem inclination = std::asin(std::abs(height_diff) / d);
-            if (inclination > max_pitch_)
-            {
-                return std::numeric_limits<Cost>::infinity();
-            }
-            // TODO: Check pitch and roll separately.
-            /*
-            Elem pitch0 = std::acos(normals_[v0][2]);
-            if (pitch0 > max_pitch_)
-            {
-                return std::numeric_limits<Cost>::infinity();
-            }
-            Elem pitch1 = std::acos(normals_[v1][2]);
-            if (pitch1 > max_pitch_)
-            {
-                return std::numeric_limits<Cost>::infinity();
-            }
-            float roll0 = 0.f;
-            float roll1 = 0.f;
-            */
-             // Initialize with distance computed in NN search.
-            // Multiple with relative pitch and roll.
-//            d *= (1.f + (pitch0 + pitch1 + inclination) / 3.f / max_pitch_ + (roll0 + roll1) / 2.f / max_roll_);
-            d *= (1.f + (inclination / max_pitch_));
-//            std::cout << v0 << " -> " << v1 << ": " << d << std::endl;
-            return d;
-        }
-
-        flann::Matrix<Elem> points_;
-        flann::Index<flann::L2_3D<Elem>> points_index_;
-        flann::Matrix<Elem> normals_;
-        Buffer<uint16_t> occupied_;
-        Buffer<uint16_t> empty_;
-        Buffer<uint8_t> num_normal_pts_;
-        // from ball neighborhood
-        Buffer<Elem> ground_diff_std_;
-        // circle in ground plane
-        Buffer<Elem> ground_diff_min_;
-        Buffer<Elem> ground_diff_max_;
-        Buffer<Elem> ground_abs_diff_mean_;
-        Buffer<uint8_t> num_obstacle_pts_;
-        Buffer<uint8_t> labels_;
-        Buffer<uint8_t> num_edge_neighbors_;
-
-        // NN and distances
-        int k_;
-        Elem radius_;
-        Buffer<int> nn_buf_;
-        Buffer<Elem> dist_buf_;
-        flann::Matrix<int> nn_;
-        flann::Matrix<Elem> dist_;
-
-        float max_pitch_;
-        float max_roll_;
-        uint16_t empty_ratio_;
-    };
-
-    class EdgeCosts
-    {
-    public:
-        EdgeCosts(const Graph& g)
-                :
-                g_(g)
-        {
-        }
-        inline Cost operator[](const Edge& e) const
-        {
-            return g_.cost(e);
-        }
-    private:
-        const Graph& g_;
-    };
-
 }  // namespace naex
 
 #include <naex/graph.h>
@@ -728,8 +273,9 @@ namespace naex
         }
 
         void append_path(const std::vector<Vertex>& path_indices,
-                const flann::Matrix<Elem>& points,
-                const flann::Matrix<Elem>& normals,
+//                const flann::Matrix<Elem>& points,
+//                const flann::Matrix<Elem>& normals,
+                const std::vector<Point>& points,
                 nav_msgs::Path& path)
         {
             if (path_indices.empty())
@@ -740,9 +286,12 @@ namespace naex
             for (const auto& v: path_indices)
             {
                 geometry_msgs::PoseStamped pose;
-                pose.pose.position.x = points[v][0];
-                pose.pose.position.y = points[v][1];
-                pose.pose.position.z = points[v][2];
+//                pose.pose.position.x = points[v][0];
+//                pose.pose.position.y = points[v][1];
+//                pose.pose.position.z = points[v][2];
+                pose.pose.position.x = points[v].position_[0];
+                pose.pose.position.y = points[v].position_[1];
+                pose.pose.position.z = points[v].position_[2];
                 pose.pose.orientation.w = 1.;
                 if (!path.poses.empty())
                 {
@@ -750,7 +299,8 @@ namespace naex
                             pose.pose.position.y - path.poses.back().pose.position.y,
                             pose.pose.position.z - path.poses.back().pose.position.z);
                     x.normalize();
-                    Vec3Map z(normals[v]);
+//                    Vec3Map z(normals[v]);
+                    Vec3 z = ConstVec3Map(points[v].normal_);
                     // Fix z direction to be consistent with the previous pose.
                     // As we start from the current robot pose with correct z
                     // orientation, all following z directions get corrected.
@@ -946,8 +496,11 @@ namespace naex
             // Construct NN graph.
             // TODO: Index rebuild incrementally with new points.
 //            g.build_index();
-            map_.update_graph();
-            map_.update_features();
+            auto dirty = map_.collect_points_to_update();
+            map_.update_graph(dirty.begin(), dirty.end());
+            map_.update_features(dirty.begin(), dirty.end());
+            map_.compute_normal_labels(dirty.begin(), dirty.end());
+            map_.compute_final_labels(dirty.begin(), dirty.end());
 
             // Create debug cloud for visualization of intermediate results.
             sensor_msgs::PointCloud2 debug_cloud;
@@ -995,8 +548,8 @@ namespace naex
             std::vector<Elem> traversable;
             traversable.reserve(tol);
 {
-    // TODO: Make tolerance a distance instead of number of nearest points.
-    Lock lock(map_.index_mutex_);
+            // TODO: Make tolerance a distance instead of number of nearest points.
+            Lock lock(map_.index_mutex_);
             Query<Value> start_query(*map_.index_, FlannMat(start_position.data(), 1, 3), tol);
             // Get traversable points.
             for (const auto& v: start_query.nn_buf_)
@@ -1004,8 +557,8 @@ namespace naex
 //                if (g.labels_[v] == TRAVERSABLE || g.labels_[v] == EDGE)
 //                if (map_.get_cloud()[v].functional_label_ == TRAVERSABLE
 //                        || map_.get_cloud()[v].functional_label_ == EDGE)
-                if (map_.cloud_[v].functional_label_ == TRAVERSABLE
-                        || map_.cloud_[v].functional_label_ == EDGE)
+                if (map_.cloud_[v].flags_ & TRAVERSABLE
+                        || map_.cloud_[v].flags_ & EDGE)
                 {
                     traversable.push_back(v);
                 }
@@ -1054,13 +607,11 @@ namespace naex
             // TODO: Append starting pose as a special vertex with orientation dependent edges.
             // Note, that for some worlds and robots, the neighborhood must be quite large to get traversable points.
             // See e.g. X1 @ cave_circuit_practice_01.
-
             Graph g(map_);
-
             // Plan in NN graph with approx. travel time costs.
             Buffer<Vertex> predecessor(g.num_vertices());
             Buffer<Value> path_costs(g.num_vertices());
-            EdgeCosts edge_costs(g);
+            EdgeCosts edge_costs(map_);
             boost::typed_identity_property_map<Vertex> index_map;
 
             Timer t_dijkstra;
@@ -1090,7 +641,8 @@ namespace naex
                     {
                         continue;
                     }
-                    Elem dist = (ConstVec3Map(points[v]) - goal_position).norm();
+//                    Elem dist = (ConstVec3Map(points[v]) - goal_position).norm();
+                    Value dist = (ConstVec3Map(map_.cloud_[v].position_) - goal_position).norm();
                     if (dist < best_dist)
                     {
                         v_goal = v;
@@ -1134,16 +686,21 @@ namespace naex
                 res.plan.header.frame_id = map_frame_;
                 res.plan.header.stamp = ros::Time::now();
                 res.plan.poses.push_back(start);
-                append_path(path_indices, points, normals, res.plan);
+//                append_path(path_indices, points, normals, res.plan);
+                append_path(path_indices, map_.cloud_, res.plan);
                 ROS_DEBUG("Path of length %lu (%.3f s).", res.plan.poses.size(), t.seconds_elapsed());
                 return true;
             }
 
             // Compute vertex utility as minimum observation distance.
-            Buffer<Elem> vp_dist = viewpoint_dist(points);
-            Buffer<Elem> other_vp_dist = other_viewpoint_dist(points);
-            assert(vp_dist.size() == points.rows);
-            assert(other_vp_dist.size() == points.rows);
+//            Buffer<Elem> vp_dist = viewpoint_dist(points);
+//            Buffer<Elem> other_vp_dist = other_viewpoint_dist(points);
+//            assert(vp_dist.size() == points.rows);
+//            assert(other_vp_dist.size() == points.rows);
+            Buffer<Elem> vp_dist = viewpoint_dist(map_.position_matrix());
+            Buffer<Elem> other_vp_dist = other_viewpoint_dist(map_.position_matrix());
+//            assert(vp_dist.size() == points.rows);
+//            assert(other_vp_dist.size() == points.rows);
             Buffer<Elem> utility(vp_dist.size());
 
             auto it_vp = vp_dist.begin();
@@ -1160,15 +717,24 @@ namespace naex
                 const auto util_all = std::min(std::max(vp_dist_all - min_vp_distance_, 0.f), max_vp_distance_) / max_vp_distance_;
                 *it_utility = std::max(self_factor_ * util, util_all);
                 // Multiply with edge neighbors.
-                *it_utility *= (1 + g.num_edge_neighbors_[i]);
+//                *it_utility *= (1 + g.num_edge_neighbors_[i]);
+                *it_utility *= (1 + map_.cloud_[i].num_edge_neighbors_);
                 // Prefer frontiers in a specific subspace (e.g. positive x).
                 // TODO: Ensure frame subt is used here.
 //                *it_utility /= std::max(-points[i][0] + 9.f, 1.f);
-                if (points[i][0] >= -60. && points[i][0] <= 0.
-                        && points[i][1] >= -30. && points[i][1] <= 30.
-                        && points[i][2] >= -30. && points[i][0] <= 30.)
+//                if (points[i][0] >= -60. && points[i][0] <= 0.
+//                        && points[i][1] >= -30. && points[i][1] <= 30.
+//                        && points[i][2] >= -30. && points[i][0] <= 30.)
+//                {
+//                    Elem dist_from_origin = ConstVec3Map(points[i]).norm();
+//                    *it_utility /= (1. + std::pow(dist_from_origin, 4.f));
+//                }
+
+                if (map_.cloud_[i].position_[0] >= -60. && map_.cloud_[i].position_[0] <= 0.
+                    && map_.cloud_[i].position_[1] >= -30. && map_.cloud_[i].position_[1] <= 30.
+                    && map_.cloud_[i].position_[2] >= -30. && map_.cloud_[i].position_[0] <= 30.)
                 {
-                    Elem dist_from_origin = ConstVec3Map(points[i]).norm();
+                    Elem dist_from_origin = ConstVec3Map(map_.cloud_[i].position_).norm();
                     *it_utility /= (1. + std::pow(dist_from_origin, 4.f));
                 }
             }
@@ -1202,9 +768,12 @@ namespace naex
                 return false;
             }
 
+//            ROS_INFO("Goal position: %.1f, %.1f, %.1f m: cost %.3g, utility %.3g, final cost %.3g.",
+//                    points[v_goal][0], points[v_goal][1], points[v_goal][2],
+//                    path_costs[v_goal], utility[v_goal], final_costs[v_goal]);
             ROS_INFO("Goal position: %.1f, %.1f, %.1f m: cost %.3g, utility %.3g, final cost %.3g.",
-                    points[v_goal][0], points[v_goal][1], points[v_goal][2],
-                    path_costs[v_goal], utility[v_goal], final_costs[v_goal]);
+                     map_.position(v_goal)[0], map_.position(v_goal)[1], map_.position(v_goal)[2],
+                     path_costs[v_goal], utility[v_goal], final_costs[v_goal]);
             fill_field("final_cost", final_costs.begin(), debug_cloud);
             final_cost_cloud_pub_.publish(debug_cloud);
 
@@ -1217,7 +786,8 @@ namespace naex
             res.plan.header.frame_id = map_frame_;
             res.plan.header.stamp = ros::Time::now();
             res.plan.poses.push_back(start);
-            append_path(path_indices, points, normals, res.plan);
+//            append_path(path_indices, points, normals, res.plan);
+            append_path(path_indices, map_.cloud_, res.plan);
             ROS_DEBUG("Path of length %lu (%.3f s).", res.plan.poses.size(), t.seconds_elapsed());
             return true;
         }
@@ -1388,6 +958,8 @@ namespace naex
                     tf.transform.translation.z);
             Eigen::Affine3f transform = translation * rotation;
 
+            // TODO: Update map occupancy based on reconstructed surface of 2D cloud.
+
 //            Buffer<Elem> robots;
             std::vector<Elem> robots;
             if (filter_robots_)
@@ -1437,6 +1009,7 @@ namespace naex
             flann::Matrix<Elem> points(points_buf.begin(), n_added, 3);
             map_.merge(points, origin_mat);
             ROS_DEBUG("Input cloud with %u points merged: %.3f s.", n_added, t.seconds_elapsed());
+            // TODO: Mark offected map points for update?
 
             sensor_msgs::PointCloud2 map_cloud;
             map_cloud.header.frame_id = map_frame_;
