@@ -55,12 +55,13 @@ public:
         cloud_.reserve(DEFAULT_CAPACITY);
     }
 
-    flann::Matrix<Value> position_matrix()
+    FlannMat position_matrix(Index start = 0, Index end = 0)
     {
         if (cloud_.empty()) {
             return FlannMat();
         }
-        return flann::Matrix<Value>(cloud_[0].position_, cloud_.size(), 3, sizeof(Point));
+        Index size = (start < end) ? end - start : Index(cloud_.size()) - start;
+        return FlannMat(cloud_[start].position_, static_cast<size_t>(size), 3, sizeof(Point));
     }
 
     flann::Matrix<int> neighbor_matrix()
@@ -178,7 +179,8 @@ public:
     {
         Timer t;
         // TODO: Update only dirty points.
-        if (!empty()) {
+        if (!empty())
+        {
             Lock lock(index_mutex_);
 //                index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(points_, flann::KDTreeSingleIndexParams());
             index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(
@@ -187,6 +189,10 @@ public:
             // TODO: Is this necessary?
 //                index_->buildIndex();
             ROS_INFO("Updating index: %.3f s.", t.seconds_elapsed());
+        }
+        else
+        {
+            ROS_INFO("Index not updated due to empty map.");
         }
     }
 
@@ -225,8 +231,11 @@ public:
                 ++n_obstacle;
             }
         }
-        ROS_INFO("Normal labels of %lu pts: %u traversable, %u obstacle (%.3f s).",
-                 n_traverable + n_obstacle, n_traverable, n_obstacle, t.seconds_elapsed());
+        ROS_INFO("Normal labels of %lu pts: %lu traversable, %lu obstacle (%.3f s).",
+                 size_t(n_traverable + n_obstacle),
+                 size_t(n_traverable),
+                 size_t(n_obstacle),
+                 t.seconds_elapsed());
     }
 
     std::vector<Index> collect_points_to_update()
@@ -276,6 +285,7 @@ public:
 //            }
 //        }
 
+        ROS_INFO("Constructing dirty cloud...");
 //        std::vector<Index> dirty_indices;
         std::vector<Neighborhood> dirty_cloud;
 //        dirty_indices.reserve(cloud_.size());
@@ -291,7 +301,7 @@ public:
 
         if (dirty_cloud.empty())
         {
-            ROS_INFO("Graph up to date (no points to update): %.3f s.",
+            ROS_INFO("Graph up to date, no points to update (%.3f s).",
                      t.seconds_elapsed());
             return;
         }
@@ -309,19 +319,26 @@ public:
                                        Neighborhood::K_NEIGHBORS,
                                        sizeof(Neighborhood));
 
+        t.reset();
         flann::SearchParams params;
         params.checks = 64;
         params.cores = 0;
-//            params.max_neighbors = k;
-//            points_index_.radiusSearch(points_, nn_, dist_, radius, params);
+        params.max_neighbors = Neighborhood::K_NEIGHBORS;
+        params.sorted = true;
+//              points_index_.radiusSearch(points_, nn_, dist_, radius, params);
         {
+            ROS_INFO("Locking index...");
             Lock lock(index_mutex_);
-            index_->knnSearch(positions,
-                              neighbors,
-                              distances,
-                              Neighborhood::K_NEIGHBORS,
-                              params);
+//            index_->knnSearch(positions,
+//                              neighbors,
+//                              distances,
+//                              Neighborhood::K_NEIGHBORS,
+//                              params);
+            ROS_INFO("Searching index...");
+            index_->radiusSearch(positions, neighbors, distances,
+                                 neighborhood_radius_, params);
         }
+        ROS_INFO("Search complete (%.3f s).", t.seconds_elapsed());
         // Propagate NN info into the main graph.
 //        for (Index i = 0; i < dirty_indices.size(); ++i)
 //        {
@@ -392,14 +409,19 @@ public:
 
     void update_dirty()
     {
+        Lock lock(dirty_mutex_);
+        ROS_INFO("Updating %lu points...", dirty_indices_.size());
         Timer t;
+        ROS_INFO("Updating graph...");
         update_graph(dirty_indices_.begin(), dirty_indices_.end());
+        ROS_INFO("Updating features...");
         update_features(dirty_indices_.begin(), dirty_indices_.end());
+        ROS_INFO("Updating normal labels...");
         compute_normal_labels(dirty_indices_.begin(), dirty_indices_.end());
+        ROS_INFO("Updating final labels...");
         compute_final_labels(dirty_indices_.begin(), dirty_indices_.end());
-        const auto n = dirty_indices_.size();
+        ROS_INFO("%lu points updated (%.3f s).", dirty_indices_.size(), t.seconds_elapsed());
         dirty_indices_.clear();
-        ROS_INFO("%lu points updated (%.3f s).", n, t.seconds_elapsed());
     }
 
     template<typename It>
@@ -609,8 +631,11 @@ public:
                 cloud_[v0].flags_ &= ~TRAVERSABLE;
             }
         }
-        ROS_INFO("%lu final labels: %u traversable, %u empty, %u unknown, %u edge, %u actor, %u obstacle (%.3f s).",
-                 n, n_traverable, n_empty, n_unknown, n_edge, n_actor, n_obstacle, t.seconds_elapsed());
+        ROS_INFO("%lu final labels: %lu traversable, %lu empty, %lu unknown, "
+                 "%lu edge, %lu actor, %lu obstacle (%.3f s).",
+                 size_t(n), size_t(n_traverable), size_t(n_empty),
+                 size_t(n_unknown), size_t(n_edge), size_t(n_actor),
+                 size_t(n_obstacle), t.seconds_elapsed());
     }
 
     /** Resize point buffers if necessary, update wrappers and index. */
@@ -774,20 +799,26 @@ public:
 
     void initialize(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
     {
+        ROS_INFO("Point size: %lu bytes.", sizeof(Point));
+        ROS_INFO("Neighborhood size: %lu bytes.", sizeof(Neighborhood));
         assert(cloud_.empty());
         Timer t;
         for (size_t i = 0; i < points.rows; ++i)
         {
             Point point;
-            for (size_t j = 0; j < 3; ++j)
-            {
-                point.position_[j] = points[i][j];
-            }
+            std::copy(points[i], points[i] + points.cols, point.position_);
             point.flags_ &= ~UPDATED;
-            dirty_indices_.insert(static_cast<Index>(cloud_.size()));
             cloud_.emplace_back(point);
+
+            Neighborhood neigh;
+            std::copy(points[i], points[i] + points.cols, neigh.position_);
+            neigh.neighbor_count_ = 0;
+            graph_.emplace_back(neigh);
+
+            dirty_indices_.insert(static_cast<Index>(cloud_.size()));
         }
         assert(cloud_.size() == points.rows);
+//        ROS_INFO("Map initialized with %lu points.", points.rows);
         update_index();
         update_dirty();
         ROS_INFO("Map initialized with %lu points (%.3f s).",
@@ -799,9 +830,12 @@ public:
     void merge(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
     {
 //            Lock lock(snapshot_mutex_);
+        ROS_INFO("Locking cloud...");
         Lock lock(cloud_mutex_);
+//        ROS_INFO("Locking index...");
+//        Lock index_lock(index_mutex_);
         Timer t;
-        ROS_DEBUG("Merging cloud started. Capacity %lu points.", capacity());
+        ROS_INFO("Merging cloud started. Capacity %lu points.", capacity());
         // TODO: Forbid allocation while in use or lock?
 //        reserve(size() + points.rows);
 
@@ -817,10 +851,11 @@ public:
 
         // Find NN distance within current map.
 //        t.reset();
+        ROS_INFO("Locking index...");
         Lock index_lock(index_mutex_);
 //        Query<Elem> q(*index_, points, 1);
         Query<Elem> q(*index_, points, Neighborhood::K_NEIGHBORS, neighborhood_radius_);
-        ROS_DEBUG("Got neighbors for %lu points (%.3f s).",
+        ROS_INFO("Got neighbors for %lu points (%.3f s).",
                   points.rows,
                   t.seconds_elapsed());
 
@@ -828,8 +863,9 @@ public:
         // We'll assume that input points also (approx.) comply to the
         // same min. distance threshold, so each added point can be tested
         // separately.
-        t.reset();
-        Index n_added = 0;
+//        t.reset();
+        Index start = static_cast<Index>(size());
+//        Index n_added = 0;
         const auto min_dist_2 = points_min_dist_ * points_min_dist_;
         for (Index i = 0; i < points.rows; ++i)
         {
@@ -852,13 +888,18 @@ public:
 //            }
 
             Point point;
-            point.flags_ &= ~UPDATED;
-            for (Index j = 0; j < 3; ++j)
-            {
-                point.position_[j] = points[i][j];
-            }
-            cloud_.emplace_back(point);
-            ++n_added;
+//            for (Index j = 0; j < 3; ++j)
+//            {
+//                point.position_[j] = points[i][j];
+//            }
+//            std::copy(points[i], points[i] + points.cols, point.position_);
+//            point.flags_ &= ~UPDATED;
+//            cloud_.emplace_back(point);
+//            Neighborhood neigh;
+//            std::copy(points[i], points[i] + points.cols, neigh.position_);
+//            neigh.neighbor_count_ = 0;
+//            graph_.emplace_back(neigh);
+//            ++n_added;
 
             // Collect dirty indices.
             bool added = true;
@@ -880,6 +921,7 @@ public:
                     added = false;
                     break;
                 }
+                // A neighbor of added point within specified distance.
                 dirty_indices_.insert(q.nn_[i][j]);
             }
             if (added)
@@ -888,20 +930,28 @@ public:
                 std::copy(points[i], points[i] + points.cols, point.position_);
                 point.flags_ &= ~UPDATED;
                 cloud_.emplace_back(point);
+
+                Neighborhood neigh;
+                std::copy(points[i], points[i] + points.cols, neigh.position_);
+                neigh.neighbor_count_ = 0;
+                graph_.emplace_back(neigh);
+
                 dirty_indices_.insert(cloud_.size() - 1);
-                ++n_added;
+//                ++n_added;
             }
         }
 //            mean /= points.rows;
 //            ROS_INFO("Mean distance to map points: %.3f m.", mean);
-        size_t n_map = size();
+//        size_t n_map = size();
 //            update_matrix_wrappers(size() + n_added);
         // TODO: flann::Index::addPoints (what indices? what with removed indices?)
 //        update_index();
 
+        index_->addPoints(position_matrix(start));
+
         ROS_INFO("%lu points merged into map with %lu points (%.3f s).",
-                 n_added,
-                 n_map,
+                 size_t(size() - start),
+                 size_t(size()),
                  t.seconds_elapsed());
     }
 
@@ -950,6 +1000,7 @@ public:
     Mutex index_mutex_;
     std::shared_ptr<flann::Index<flann::L2_3D<Value>>> index_;
 
+    Mutex dirty_mutex_;
 //    std::set<Index> dirty_indices_;
     std::unordered_set<Index> dirty_indices_;
 

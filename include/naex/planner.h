@@ -52,40 +52,41 @@ namespace naex
                 nh_(nh),
                 pnh_(pnh),
                 tf_(),
-//                position_name_("x"),
-//                normal_name_("normal_x"),
-//                map_frame_(""),
-//                robot_frame_("base_footprint"),
-//                robot_frames_(),
-//                max_cloud_age_(5.),
-//                max_pitch_(30. / 180. * M_PI),
-//                max_roll_(30. / 180. * M_PI),
-//                empty_ratio_(2),
-//                filter_robots_(false),
-//                neighborhood_knn_(12),
-//                neighborhood_radius_(.5),
-//                min_normal_pts_(9),
-//                normal_radius_(0.5),
-//                max_nn_height_diff_(0.15),
-//                viewpoints_update_freq_(1.),
+                position_name_("x"),
+                normal_name_("normal_x"),
+                map_frame_(""),
+                robot_frame_("base_footprint"),
+                robot_frames_(),
+                max_cloud_age_(5.f),
+                max_pitch_(30.f / 180.f * M_PI),
+                max_roll_(30.f / 180.f * M_PI),
+                empty_ratio_(2),
+                filter_robots_(false),
+                neighborhood_knn_(12),
+                neighborhood_radius_(.5),
+                min_normal_pts_(9),
+                normal_radius_(0.5),
+                max_nn_height_diff_(0.15),
+                viewpoints_update_freq_(1.),
                 viewpoints_(),
-//                clearance_low_(0.15),
-//                clearance_high_(0.8),
-//                min_points_obstacle_(3),
-//                max_ground_diff_std_(0.1),
-//                max_ground_abs_diff_mean_(0.1),
-//                edge_min_centroid_offset_(0.75),
-//                min_dist_to_obstacle_(0.7),
+                clearance_low_(0.15),
+                clearance_high_(0.8),
+                min_points_obstacle_(3),
+                max_ground_diff_std_(0.1),
+                max_ground_abs_diff_mean_(0.1),
+                edge_min_centroid_offset_(0.75),
+                min_dist_to_obstacle_(0.7),
                 other_viewpoints_(),
-//                min_vp_distance_(1.5),
-//                max_vp_distance_(5.),
-//                self_factor_(0.25),
-//                planning_freq_(0.5),
+                min_vp_distance_(1.5),
+                max_vp_distance_(5.),
+                self_factor_(0.25),
+                planning_freq_(0.5),
                 initialized_(false),
-//                queue_size_(5.)
+                queue_size_(5.),
 //                params_(),
                 map_()
         {
+            Timer t;
             // Invalid position invokes exploration mode.
             last_request_.start.pose.position.x = std::numeric_limits<double>::quiet_NaN();
             last_request_.start.pose.position.y = std::numeric_limits<double>::quiet_NaN();
@@ -96,10 +97,11 @@ namespace naex
             last_request_.tolerance = 32.;
             configure();
             ROS_INFO("Waiting for other robots...");
-            std::vector<Elem> robots;
-            find_robots(map_frame_, ros::Time(), robots, 30.f);
+            // TODO: Avoid blocking here to be usable as nodelet.
+            find_robots(map_frame_, ros::Time(), 15.f);
             Lock lock(initialized_mutex_);
             initialized_ = true;
+            ROS_INFO("Initialized (%.3f s).", t.seconds_elapsed());
         }
 
         void update_params(const ros::WallTimerEvent& evt)
@@ -419,6 +421,8 @@ namespace naex
 //        bool plan(const geometry_msgs::PoseStamped& start)
         bool plan(nav_msgs::GetPlanRequest& req, nav_msgs::GetPlanResponse& res)
         {
+            ROS_WARN("Don't plan for now.");
+            return false;
             Timer t;
             {
                 Lock lock(initialized_mutex_);
@@ -481,7 +485,7 @@ namespace naex
             if (filter_robots_)
             {
                 // Don't wait for robot positions for planning.
-                find_robots(map_frame_, ros::Time(), robots, 0.f);
+                robots = find_robots(map_frame_, ros::Time(), 0.f);
             }
 
             // Compute preliminary point labels based on normals.
@@ -876,9 +880,11 @@ namespace naex
                     robot_frame_.c_str(), res.plan.poses.size(), map_frame_.c_str(), t.seconds_elapsed());
         }
 
-        void find_robots(const std::string& frame, const ros::Time& stamp, std::vector<Elem>& robots, float timeout)
+        std::vector<Value> find_robots(const std::string& frame, const ros::Time& stamp, float timeout)
         {
-            robots.reserve(robot_frames_.size());
+            Timer t;
+            std::vector<Value> robots;
+            robots.reserve(3 * robot_frames_.size());
             for (const auto kv: robot_frames_)
             {
                 if (robot_frame_ == kv.second)
@@ -897,12 +903,15 @@ namespace naex
                             kv.second.c_str(), frame.c_str(), ex.what());
                     continue;
                 }
-                robots.push_back(tf.transform.translation.x);
-                robots.push_back(tf.transform.translation.y);
-                robots.push_back(tf.transform.translation.z);
+                robots.push_back(static_cast<Value>(tf.transform.translation.x));
+                robots.push_back(static_cast<Value>(tf.transform.translation.y));
+                robots.push_back(static_cast<Value>(tf.transform.translation.z));
                 ROS_INFO("Robot %s found in %s at [%.1f, %.1f, %.1f].", kv.second.c_str(), frame.c_str(),
                         tf.transform.translation.x, tf.transform.translation.y, tf.transform.translation.z);
             }
+            ROS_INFO("%lu / %lu robots found in %.3f s (timeout %.3f s).",
+                     robots.size() / 3, robot_frames_.size(), t.seconds_elapsed(), timeout);
+            return robots;
         }
 
         void check_initialized()
@@ -933,7 +942,7 @@ namespace naex
 //            }
             check_initialized();
             const Index n_pts = cloud->height * cloud->width;
-            ROS_DEBUG("Input cloud from %s with %u points received.",
+            ROS_INFO("Input cloud from %s with %u points received.",
                     cloud->header.frame_id.c_str(), n_pts);
             double timeout_ = 5.;
             ros::Duration timeout(std::max(timeout_ - (ros::Time::now() - cloud->header.stamp).toSec(), 0.));
@@ -948,7 +957,7 @@ namespace naex
                         cloud->header.frame_id.c_str(), map_frame_.c_str(), ex.what());
                 return;
             }
-            Timer t;
+
             Quat rotation(tf.transform.rotation.w,
                     tf.transform.rotation.x,
                     tf.transform.rotation.y,
@@ -964,7 +973,8 @@ namespace naex
             std::vector<Elem> robots;
             if (filter_robots_)
             {
-                find_robots(cloud->header.frame_id, cloud->header.stamp, robots, 3.f);
+                Timer t;
+                robots = find_robots(cloud->header.frame_id, cloud->header.stamp, 3.f);
             }
 
             Vec3 origin = transform * Vec3(0., 0., 0.);
@@ -1006,9 +1016,10 @@ namespace naex
                 ROS_INFO("Discarding input cloud: not enough points to merge: %u < %u.", n_added, min_pts);
                 return;
             }
+            ROS_INFO("%lu points kept by distance and robot filters.", size_t(n_added));
             flann::Matrix<Elem> points(points_buf.begin(), n_added, 3);
             map_.merge(points, origin_mat);
-            ROS_DEBUG("Input cloud with %u points merged: %.3f s.", n_added, t.seconds_elapsed());
+//            ROS_INFO("Input cloud with %u points merged: %.3f s.", n_added, t.seconds_elapsed());
             // TODO: Mark offected map points for update?
 
             sensor_msgs::PointCloud2 map_cloud;

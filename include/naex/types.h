@@ -89,9 +89,10 @@ const Vertex INVALID_VERTEX = std::numeric_limits<Vertex>::max();
 class Point
 {
 public:
-    Point()
-    {}
-
+//    Point():
+//            flags_(0)
+//    {}
+//
     Value position_[3];
     // Geometric features
     // TODO: More compact normal representation? Maybe just for sharing,
@@ -138,6 +139,7 @@ public:
 class Neighborhood
 {
 public:
+    // TODO: Move K_NEIGHBORS somewhere else.
     static const Index K_NEIGHBORS = 32;
     Value position_[3];
     // NN Graph

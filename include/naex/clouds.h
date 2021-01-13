@@ -464,6 +464,7 @@ namespace naex
 
             // Check that the whole cloud conforms to the estimated parameters.
             assert(check(cloud));
+            return true;
         }
 
         template<typename T>
