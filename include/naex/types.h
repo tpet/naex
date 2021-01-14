@@ -92,7 +92,9 @@ class Point
 {
 public:
     Point():
-            flags_(0)
+            position_{},
+            normal_{},
+            viewpoint_{}
     {}
 //
     Value position_[3];
@@ -142,7 +144,10 @@ class Neighborhood
 {
 public:
     Neighborhood():
-            neighbor_count_(0)
+            position_{},
+//            neighbor_count_(0),
+            neighbors_{},
+            distances_{}
     {}
 
     // TODO: Move K_NEIGHBORS somewhere else.

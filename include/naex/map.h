@@ -339,18 +339,16 @@ public:
         params.sorted = true;
 //              points_index_.radiusSearch(points_, nn_, dist_, radius, params);
         {
-            ROS_INFO("Locking index...");
+//            ROS_INFO("Locking index...");
             Lock lock(index_mutex_);
-//            index_->knnSearch(positions,
-//                              neighbors,
-//                              distances,
-//                              Neighborhood::K_NEIGHBORS,
-//                              params);
-            ROS_INFO("Searching index...");
-            index_->radiusSearch(positions, neighbors, distances,
-                                 neighborhood_radius_, params);
+//            ROS_INFO("Searching index...");
+            index_->knnSearch(positions, neighbors, distances,
+                              Neighborhood::K_NEIGHBORS, params);
+            // FIXME: Radius search with max K seems to result in errors.
+//            index_->radiusSearch(positions, neighbors, distances,
+//                                 neighborhood_radius_, params);
         }
-        ROS_INFO("Search complete (%.3f s).", t.seconds_elapsed());
+//        ROS_INFO("Search complete (%.3f s).", t.seconds_elapsed());
         // Propagate NN info into the main graph.
 //        for (Index i = 0; i < dirty_indices.size(); ++i)
 //        {
@@ -422,17 +420,38 @@ public:
     void update_dirty()
     {
         Lock lock(dirty_mutex_);
-        ROS_INFO("Updating %lu points...", dirty_indices_.size());
         Timer t;
-        ROS_INFO("Updating graph...");
+//        ROS_INFO("Updating %lu points...", dirty_indices_.size());
+//        ROS_INFO("Updating graph...");
+
+        Timer t_part;
         update_graph(dirty_indices_.begin(), dirty_indices_.end());
-//        ROS_INFO("Updating features...");
-//        update_features(dirty_indices_.begin(), dirty_indices_.end());
-//        ROS_INFO("Updating normal labels...");
-//        compute_normal_labels(dirty_indices_.begin(), dirty_indices_.end());
-//        ROS_INFO("Updating final labels...");
-//        compute_final_labels(dirty_indices_.begin(), dirty_indices_.end());
+        ROS_INFO("Graph updated at %lu points (%.4f s).",
+                 dirty_indices_.size(), t_part.seconds_elapsed());
+
+        t_part.reset();
+        update_features(dirty_indices_.begin(), dirty_indices_.end());
+        ROS_INFO("Features updated at %lu points (%.4f s).",
+                 dirty_indices_.size(), t_part.seconds_elapsed());
+
+        t_part.reset();
+        compute_normal_labels(dirty_indices_.begin(), dirty_indices_.end());
+        ROS_INFO("Normal labels updated at %lu points (%.4f s).",
+                 dirty_indices_.size(), t_part.seconds_elapsed());
+
+        t_part.reset();
+        compute_final_labels(dirty_indices_.begin(), dirty_indices_.end());
+        ROS_INFO("Final labels updated at %lu points (%.4f s).",
+                 dirty_indices_.size(), t_part.seconds_elapsed());
+
         ROS_INFO("%lu points updated (%.3f s).", dirty_indices_.size(), t.seconds_elapsed());
+//        dirty_indices_.clear();
+    }
+
+    void clear_dirty()
+    {
+        Lock lock(dirty_mutex_);
+        ROS_INFO("Clearing %lu dirty indices.", dirty_indices_.size());
         dirty_indices_.clear();
     }
 
@@ -836,7 +855,7 @@ public:
         ROS_INFO("%lu dirty indices.", dirty_indices_.size());
 //        ROS_INFO("Map initialized with %lu points.", points.rows);
         update_index();
-        update_dirty();
+//        update_dirty();
         ROS_INFO("Map initialized with %lu points (%.3f s).",
                  points.rows,
                  t.seconds_elapsed());
@@ -858,10 +877,13 @@ public:
         if (empty())
         {
             initialize(points, origin);
+            ROS_INFO("Map initialized with %lu points (%.3f s).",
+                     points.rows, t.seconds_elapsed());
             return;
         }
 
         // TODO: Switch to organized occupancy updates.
+        // TODO: Flag dirty points also based on occupancy updates.
         // Move it in a calling method where we have cloud structure.
 //        update_occupancy_unorganized(points, origin);
 
@@ -975,6 +997,7 @@ public:
 //        update_index();
 
         index_->addPoints(position_matrix(start));
+//        update_dirty();
 
         ROS_INFO("%lu points merged into map with %lu points (%.3f s).",
                  size_t(size() - start),
@@ -992,7 +1015,7 @@ public:
         append_field<Value>("normal_x", 1, cloud);
         append_field<Value>("normal_y", 1, cloud);
         append_field<Value>("normal_z", 1, cloud);
-        cloud.point_step = sizeof(Point);
+        cloud.point_step = uint32_t(sizeof(Point));
         sensor_msgs::PointCloud2Modifier modifier(cloud);
         modifier.resize(cloud_.size());
 //        std::copy(&cloud_.front(), &cloud_.back(), &cloud.data.front());
@@ -1000,9 +1023,44 @@ public:
         std::copy(cloud_.begin(), cloud_.end(), reinterpret_cast<Point*>(&cloud.data[0]));
     }
 
+    template<typename It>
+    void create_debug_cloud(It begin, Index n, sensor_msgs::PointCloud2& cloud)
+    {
+        cloud.point_step = uint32_t(offsetof(Point, position_));
+        append_field<Value>("x", 1, cloud);
+        append_field<Value>("y", 1, cloud);
+        append_field<Value>("z", 1, cloud);
+        cloud.point_step = uint32_t(offsetof(Point, normal_));
+        append_field<Value>("normal_x", 1, cloud);
+        append_field<Value>("normal_y", 1, cloud);
+        append_field<Value>("normal_z", 1, cloud);
+        cloud.point_step = uint32_t(sizeof(Point));
+        sensor_msgs::PointCloud2Modifier modifier(cloud);
+        modifier.resize(n);
+        It it = begin;
+        auto out = cloud.data.data();
+        for (Index i = 0; i < n; ++i, ++it, out += cloud.point_step)
+        {
+            const auto from = reinterpret_cast<uint8_t*>(&cloud_[*it]);
+            std::copy(from, from + cloud.point_step, out);
+        }
+    }
+
     void create_cloud(sensor_msgs::PointCloud2& cloud)
     {
+        Timer t;
         create_debug_cloud(cloud);
+        ROS_INFO("Creating cloud with %u points: %.3f s.",
+                 cloud.height * cloud.width, t.seconds_elapsed());
+    }
+
+    void create_dirty_cloud(sensor_msgs::PointCloud2& cloud)
+    {
+        Lock lock(dirty_mutex_);
+        Timer t;
+        create_debug_cloud(dirty_indices_.begin(), dirty_indices_.size(), cloud);
+        ROS_INFO("Creating dirty cloud with %u points: %.3f s.",
+                 cloud.height * cloud.width, t.seconds_elapsed());
     }
 
     size_t capacity() const

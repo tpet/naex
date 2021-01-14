@@ -189,6 +189,8 @@ namespace naex
             viewpoints_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("viewpoints", 5);
             other_viewpoints_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("other_viewpoints", 5);
             map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 5);
+            map_dirty_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_dirty", 5);
+            map_diff_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_diff", 5);
 
             cloud_sub_ = nh_.subscribe("input_map", queue_size_, &Planner::cloud_received, this);
             for (int i = 0; i < num_input_clouds; ++i)
@@ -944,6 +946,7 @@ namespace naex
             const Index n_pts = cloud->height * cloud->width;
             ROS_INFO("Input cloud from %s with %u points received.",
                     cloud->header.frame_id.c_str(), n_pts);
+            Timer t;
             double timeout_ = 5.;
             ros::Duration timeout(std::max(timeout_ - (ros::Time::now() - cloud->header.stamp).toSec(), 0.));
             geometry_msgs::TransformStamped tf;
@@ -957,6 +960,7 @@ namespace naex
                         cloud->header.frame_id.c_str(), map_frame_.c_str(), ex.what());
                 return;
             }
+            ROS_INFO("Had to wait %.3f s for input cloud transform.", t.seconds_elapsed());
 
             Quat rotation(tf.transform.rotation.w,
                     tf.transform.rotation.x,
@@ -1016,17 +1020,36 @@ namespace naex
                 ROS_INFO("Discarding input cloud: not enough points to merge: %u < %u.", n_added, min_pts);
                 return;
             }
-            ROS_INFO("%lu points kept by distance and robot filters.", size_t(n_added));
+            ROS_INFO("%lu / %lu points kept by distance and robot filters.",
+                     size_t(n_added), size_t(n_pts));
             flann::Matrix<Elem> points(points_buf.begin(), n_added, 3);
-            map_.merge(points, origin_mat);
-//            ROS_INFO("Input cloud with %u points merged: %.3f s.", n_added, t.seconds_elapsed());
-            // TODO: Mark offected map points for update?
 
+            {
+                Lock lock(map_.dirty_mutex_);
+                map_.merge(points, origin_mat);
+
+                map_.update_dirty();
+//            ROS_INFO("Input cloud with %u points merged: %.3f s.", n_added, t.seconds_elapsed());
+                // TODO: Mark affected map points for update?
+
+                Timer t_send;
+                sensor_msgs::PointCloud2 map_dirty;
+                map_dirty.header.frame_id = map_frame_;
+                map_dirty.header.stamp = cloud->header.stamp;
+                map_.create_dirty_cloud(map_dirty);
+                map_dirty_pub_.publish(map_dirty);
+                ROS_INFO("Sending dirty cloud: %.3f s.", t_send.seconds_elapsed());
+
+                map_.clear_dirty();
+            }
+
+            Timer t_send;
             sensor_msgs::PointCloud2 map_cloud;
             map_cloud.header.frame_id = map_frame_;
             map_cloud.header.stamp = cloud->header.stamp;
             map_.create_cloud(map_cloud);
             map_pub_.publish(map_cloud);
+            ROS_INFO("Sending map: %.3f s.", t_send.seconds_elapsed());
         }
 
     protected:
@@ -1042,6 +1065,7 @@ namespace naex
         ros::Publisher path_cost_cloud_pub_;
         ros::Publisher utility_cloud_pub_;
         ros::Publisher final_cost_cloud_pub_;
+
         ros::Publisher path_pub_;
         ros::Publisher minpos_path_pub_;
         ros::Publisher viewpoints_pub_;
@@ -1050,6 +1074,8 @@ namespace naex
 
         std::vector<ros::Subscriber> input_cloud_subs_;
         ros::Publisher map_pub_;
+        ros::Publisher map_dirty_pub_;
+        ros::Publisher map_diff_pub_;
         ros::Timer planning_timer_;
         ros::ServiceServer get_plan_service_;
         Mutex last_request_mutex_;
