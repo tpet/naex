@@ -130,12 +130,13 @@ public:
         dist_(dist_buf_.begin(), queries.rows, k)
     {
         flann::SearchParams params;
+        params.checks = 64;
         params.cores = 0;
+        params.sorted = true;
         if (radius < std::numeric_limits<T>::infinity())
         {
             params.max_neighbors = k;
             index.radiusSearch(queries, nn_, dist_, radius, params);
-            // Limit
         }
         else
         {

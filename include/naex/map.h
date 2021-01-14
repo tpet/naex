@@ -61,7 +61,10 @@ public:
             return FlannMat();
         }
         Index size = (start < end) ? end - start : Index(cloud_.size()) - start;
-        return FlannMat(cloud_[start].position_, static_cast<size_t>(size), 3, sizeof(Point));
+        auto res = FlannMat(cloud_[start].position_, static_cast<size_t>(size), 3, sizeof(Point));
+//        ROS_INFO("Position matrix %lu-by-%lu. First point: [%.2f, %.2f, %.2f].",
+//                 res.rows, res.cols, res[0][0], res[0][1], res[0][2]);
+        return res;
     }
 
     flann::Matrix<int> neighbor_matrix()
@@ -183,11 +186,11 @@ public:
         {
             Lock lock(index_mutex_);
 //                index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(points_, flann::KDTreeSingleIndexParams());
-            index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(
-                position_matrix(),
-                flann::KDTreeSingleIndexParams());
+            index_ = std::make_shared<flann::Index<flann::L2_3D<Value>>>(
+                    position_matrix(),
+                    flann::KDTreeSingleIndexParams());
             // TODO: Is this necessary?
-//                index_->buildIndex();
+            index_->buildIndex();
             ROS_INFO("Updating index: %.3f s.", t.seconds_elapsed());
         }
         else
@@ -292,11 +295,20 @@ public:
 //        dirty_cloud.reserve(end - begin);
         for (It it = begin; it != end; ++it)
         {
-            Neighborhood neighborhood;
-            std::copy(cloud_[*it].position_,
-                      cloud_[*it].position_ + 3,
-                      neighborhood.position_);
-            dirty_cloud.emplace_back(neighborhood);
+//            Neighborhood neighborhood;
+//            std::copy(cloud_[*it].position_,
+//                      cloud_[*it].position_ + 3,
+//                      neighborhood.position_);
+//            dirty_cloud.emplace_back(neighborhood);
+//            dirty_cloud.push_back(neighborhood);
+            dirty_cloud.push_back(graph_[*it]);
+            if (it == begin)
+            {
+                ROS_INFO("First dirty point: [%.2f, %.2f, %.2f].",
+                         dirty_cloud.back().position_[0],
+                         dirty_cloud.back().position_[1],
+                         dirty_cloud.back().position_[2]);
+            }
         }
 
         if (dirty_cloud.empty())
@@ -414,12 +426,12 @@ public:
         Timer t;
         ROS_INFO("Updating graph...");
         update_graph(dirty_indices_.begin(), dirty_indices_.end());
-        ROS_INFO("Updating features...");
-        update_features(dirty_indices_.begin(), dirty_indices_.end());
-        ROS_INFO("Updating normal labels...");
-        compute_normal_labels(dirty_indices_.begin(), dirty_indices_.end());
-        ROS_INFO("Updating final labels...");
-        compute_final_labels(dirty_indices_.begin(), dirty_indices_.end());
+//        ROS_INFO("Updating features...");
+//        update_features(dirty_indices_.begin(), dirty_indices_.end());
+//        ROS_INFO("Updating normal labels...");
+//        compute_normal_labels(dirty_indices_.begin(), dirty_indices_.end());
+//        ROS_INFO("Updating final labels...");
+//        compute_final_labels(dirty_indices_.begin(), dirty_indices_.end());
         ROS_INFO("%lu points updated (%.3f s).", dirty_indices_.size(), t.seconds_elapsed());
         dirty_indices_.clear();
     }
@@ -799,25 +811,29 @@ public:
 
     void initialize(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
     {
-        ROS_INFO("Point size: %lu bytes.", sizeof(Point));
-        ROS_INFO("Neighborhood size: %lu bytes.", sizeof(Neighborhood));
+//        ROS_INFO("Point size: %lu bytes.", sizeof(Point));
+//        ROS_INFO("Neighborhood size: %lu bytes.", sizeof(Neighborhood));
         assert(cloud_.empty());
         Timer t;
         for (size_t i = 0; i < points.rows; ++i)
         {
+            dirty_indices_.insert(static_cast<Index>(cloud_.size()));
+
             Point point;
             std::copy(points[i], points[i] + points.cols, point.position_);
-            point.flags_ &= ~UPDATED;
-            cloud_.emplace_back(point);
+            point.flags_ |= STATIC;
+//            point.flags_ &= ~UPDATED;
+//            cloud_.emplace_back(point);
+            cloud_.push_back(point);
 
             Neighborhood neigh;
             std::copy(points[i], points[i] + points.cols, neigh.position_);
-            neigh.neighbor_count_ = 0;
-            graph_.emplace_back(neigh);
-
-            dirty_indices_.insert(static_cast<Index>(cloud_.size()));
+//            neigh.neighbor_count_ = 0;
+//            graph_.emplace_back(neigh);
+            graph_.push_back(neigh);
         }
         assert(cloud_.size() == points.rows);
+        ROS_INFO("%lu dirty indices.", dirty_indices_.size());
 //        ROS_INFO("Map initialized with %lu points.", points.rows);
         update_index();
         update_dirty();
@@ -830,7 +846,7 @@ public:
     void merge(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
     {
 //            Lock lock(snapshot_mutex_);
-        ROS_INFO("Locking cloud...");
+//        ROS_INFO("Locking cloud...");
         Lock lock(cloud_mutex_);
 //        ROS_INFO("Locking index...");
 //        Lock index_lock(index_mutex_);
@@ -851,7 +867,7 @@ public:
 
         // Find NN distance within current map.
 //        t.reset();
-        ROS_INFO("Locking index...");
+//        ROS_INFO("Locking index...");
         Lock index_lock(index_mutex_);
 //        Query<Elem> q(*index_, points, 1);
         Query<Elem> q(*index_, points, Neighborhood::K_NEIGHBORS, neighborhood_radius_);
@@ -887,7 +903,7 @@ public:
 //                continue;
 //            }
 
-            Point point;
+//            Point point;
 //            for (Index j = 0; j < 3; ++j)
 //            {
 //                point.position_[j] = points[i][j];
@@ -926,17 +942,28 @@ public:
             }
             if (added)
             {
+                dirty_indices_.insert(cloud_.size());
+
                 Point point;
                 std::copy(points[i], points[i] + points.cols, point.position_);
-                point.flags_ &= ~UPDATED;
-                cloud_.emplace_back(point);
+                point.flags_ |= STATIC;
+//                point.flags_ &= ~uint8_t(UPDATED);
+//                cloud_.emplace_back(point);
+                cloud_.push_back(point);
+//                ROS_INFO("Emplaced point position: [%.2f, %.2f, %.2f].",
+//                         cloud_.back().position_[0],
+//                         cloud_.back().position_[1],
+//                         cloud_.back().position_[2]);
 
                 Neighborhood neigh;
                 std::copy(points[i], points[i] + points.cols, neigh.position_);
-                neigh.neighbor_count_ = 0;
-                graph_.emplace_back(neigh);
+//                neigh.neighbor_count_ = 0;
+                graph_.push_back(neigh);
+//                ROS_INFO("Emplaced point position: [%.2f, %.2f, %.2f].",
+//                         cloud_.back().position_[0],
+//                         cloud_.back().position_[1],
+//                         cloud_.back().position_[2]);
 
-                dirty_indices_.insert(cloud_.size() - 1);
 //                ++n_added;
             }
         }

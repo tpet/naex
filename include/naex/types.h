@@ -7,6 +7,8 @@
 #include <memory>
 //#include <naex/buffer.h>
 
+//#define K_NEIGHBORS 32
+
 namespace naex
 {
 // Basic floating-point and index types
@@ -89,9 +91,9 @@ const Vertex INVALID_VERTEX = std::numeric_limits<Vertex>::max();
 class Point
 {
 public:
-//    Point():
-//            flags_(0)
-//    {}
+    Point():
+            flags_(0)
+    {}
 //
     Value position_[3];
     // Geometric features
@@ -139,6 +141,10 @@ public:
 class Neighborhood
 {
 public:
+    Neighborhood():
+            neighbor_count_(0)
+    {}
+
     // TODO: Move K_NEIGHBORS somewhere else.
     static const Index K_NEIGHBORS = 32;
     Value position_[3];
