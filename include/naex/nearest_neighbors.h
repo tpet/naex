@@ -14,23 +14,23 @@ template<typename I>
 I invalid_index();
 
 template<>
-int invalid_index<int>()
+int inline invalid_index<int>()
 {
     return -1;
 }
 
 template<>
-size_t invalid_index<size_t>()
+size_t inline invalid_index<size_t>()
 {
     return std::numeric_limits<size_t>::max();
 }
 
-bool invalid_index(int i)
+bool inline invalid_index(int i)
 {
     return i < 0;
 }
 
-bool invalid_index(size_t i)
+bool inline invalid_index(size_t i)
 {
     return i == std::numeric_limits<size_t>::max();
 }
@@ -39,47 +39,53 @@ template<typename V>
 V invalid_distance();
 
 template<>
-float invalid_distance<float>()
+float inline invalid_distance<float>()
 {
     return std::numeric_limits<float>::infinity();
 }
 
 template<>
-double invalid_distance<double>()
+double inline invalid_distance<double>()
 {
     return std::numeric_limits<double>::infinity();
 }
 
 template<>
-long invalid_distance<long>()
+long inline invalid_distance<long>()
 {
     return 0L;
 }
 
-bool invalid_distance(float d)
+bool inline invalid_distance(float d)
 {
     return std::isinf(d);
 }
 
-bool invalid_distance(double d)
+bool inline invalid_distance(double d)
 {
     return std::isinf(d);
 }
 
-bool invalid_distance(long d)
+bool inline invalid_distance(long d)
 {
     return d == 0L;
+}
+
+template<typename I, typename D>
+bool inline valid_neighbor(I i, D d)
+{
+    return !(invalid_index(i) && invalid_distance(d));
 }
 
 template<typename I, typename V>
 class NearestNeighborTraits
 {
 public:
-    I invalid_index()
+    I inline invalid_index()
     {
         return naex::invalid_index<I>();
     }
-    V invalid_distance()
+    V inline invalid_distance()
     {
         return naex::invalid_distance<V>();
     }

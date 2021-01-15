@@ -116,9 +116,10 @@ public:
     Value mean_abs_ground_diff_;
     // Viewpoint (for occupancy assessment and measurement distance)
     Value viewpoint_[3];
-    // Occupancy
-    // Distance to other actors.
+    // Distance to nearest actor.
     Value dist_to_actor_;
+    // Distance to nearest obstacle (non horizontal point).
+    Value dist_to_obstacle_;
     // Point flags accoring to Flags.
     uint8_t flags_;
     // Number of occurences of empty/occupied state.
@@ -150,7 +151,7 @@ public:
             distances_{}
     {}
 
-    // TODO: Move K_NEIGHBORS somewhere else.
+    // TODO: Make K_NEIGHBORS a parameter.
     static const Index K_NEIGHBORS = 32;
     Value position_[3];
     // NN Graph

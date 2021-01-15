@@ -502,11 +502,11 @@ namespace naex
             // Construct NN graph.
             // TODO: Index rebuild incrementally with new points.
 //            g.build_index();
-            auto dirty = map_.collect_points_to_update();
-            map_.update_graph(dirty.begin(), dirty.end());
-            map_.update_features(dirty.begin(), dirty.end());
-            map_.compute_normal_labels(dirty.begin(), dirty.end());
-            map_.compute_final_labels(dirty.begin(), dirty.end());
+//            auto dirty = map_.collect_points_to_update();
+//            map_.update_neighborhood(dirty.begin(), dirty.end());
+//            map_.compute_features(dirty.begin(), dirty.end());
+//            map_.compute_normal_labels(dirty.begin(), dirty.end());
+//            map_.compute_labels(dirty.begin(), dirty.end());
 
             // Create debug cloud for visualization of intermediate results.
             sensor_msgs::PointCloud2 debug_cloud;
@@ -944,8 +944,8 @@ namespace naex
 //            }
             check_initialized();
             const Index n_pts = cloud->height * cloud->width;
-            ROS_INFO("Input cloud from %s with %u points received.",
-                    cloud->header.frame_id.c_str(), n_pts);
+            ROS_DEBUG("Input cloud from %s with %u points received.",
+                      cloud->header.frame_id.c_str(), n_pts);
             Timer t;
             double timeout_ = 5.;
             ros::Duration timeout(std::max(timeout_ - (ros::Time::now() - cloud->header.stamp).toSec(), 0.));
@@ -960,7 +960,7 @@ namespace naex
                         cloud->header.frame_id.c_str(), map_frame_.c_str(), ex.what());
                 return;
             }
-            ROS_INFO("Had to wait %.3f s for input cloud transform.", t.seconds_elapsed());
+            ROS_DEBUG("Had to wait %.3f s for input cloud transform.", t.seconds_elapsed());
 
             Quat rotation(tf.transform.rotation.w,
                     tf.transform.rotation.x,
@@ -1020,8 +1020,8 @@ namespace naex
                 ROS_INFO("Discarding input cloud: not enough points to merge: %u < %u.", n_added, min_pts);
                 return;
             }
-            ROS_INFO("%lu / %lu points kept by distance and robot filters.",
-                     size_t(n_added), size_t(n_pts));
+            ROS_DEBUG("%lu / %lu points kept by distance and robot filters.",
+                      size_t(n_added), size_t(n_pts));
             flann::Matrix<Elem> points(points_buf.begin(), n_added, 3);
 
             {
@@ -1038,18 +1038,21 @@ namespace naex
                 map_dirty.header.stamp = cloud->header.stamp;
                 map_.create_dirty_cloud(map_dirty);
                 map_dirty_pub_.publish(map_dirty);
-                ROS_INFO("Sending dirty cloud: %.3f s.", t_send.seconds_elapsed());
+                ROS_DEBUG("Sending dirty cloud: %.3f s.", t_send.seconds_elapsed());
 
                 map_.clear_dirty();
             }
 
-            Timer t_send;
-            sensor_msgs::PointCloud2 map_cloud;
-            map_cloud.header.frame_id = map_frame_;
-            map_cloud.header.stamp = cloud->header.stamp;
-            map_.create_cloud(map_cloud);
-            map_pub_.publish(map_cloud);
-            ROS_INFO("Sending map: %.3f s.", t_send.seconds_elapsed());
+            if (map_pub_.getNumSubscribers() > 0)
+            {
+                Timer t_send;
+                sensor_msgs::PointCloud2 map_cloud;
+                map_cloud.header.frame_id = map_frame_;
+                map_cloud.header.stamp = cloud->header.stamp;
+                map_.create_cloud(map_cloud);
+                map_pub_.publish(map_cloud);
+                ROS_DEBUG("Sending map: %.3f s.", t_send.seconds_elapsed());
+            }
         }
 
     protected:

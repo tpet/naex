@@ -14,7 +14,10 @@ namespace naex
     {
     public:
         static sensor_msgs::PointField::_datatype_type datatype();
-        static size_t value_size();
+        static size_t value_size()
+        {
+            return sizeof(T);
+        }
     };
 
     // float32
@@ -23,8 +26,6 @@ namespace naex
     {
         return sensor_msgs::PointField::FLOAT32;
     }
-    template<>
-    size_t PointFieldTraits<float>::value_size() { return 4; }
 
     // float64
     template<>
@@ -32,8 +33,6 @@ namespace naex
     {
         return sensor_msgs::PointField::FLOAT64;
     }
-    template<>
-    size_t PointFieldTraits<double>::value_size() { return 8; }
 
     // int8
     template<>
@@ -41,8 +40,6 @@ namespace naex
     {
         return sensor_msgs::PointField::INT8;
     }
-    template<>
-    size_t PointFieldTraits<int8_t>::value_size() { return 1; }
 
     // int16
     template<>
@@ -50,8 +47,6 @@ namespace naex
     {
         return sensor_msgs::PointField::INT16;
     }
-    template<>
-    size_t PointFieldTraits<int16_t>::value_size() { return 2; }
 
     // int32
     template<>
@@ -59,8 +54,6 @@ namespace naex
     {
         return sensor_msgs::PointField::INT32;
     }
-    template<>
-    size_t PointFieldTraits<int32_t>::value_size() { return 4; }
 
     // uint8
     template<>
@@ -68,8 +61,6 @@ namespace naex
     {
         return sensor_msgs::PointField::UINT8;
     }
-    template<>
-    size_t PointFieldTraits<uint8_t>::value_size() { return 1; }
 
     // uint16
     template<>
@@ -77,8 +68,6 @@ namespace naex
     {
         return sensor_msgs::PointField::UINT16;
     }
-    template<>
-    size_t PointFieldTraits<uint16_t>::value_size() { return 2; }
 
     // uint32
     template<>
@@ -86,8 +75,6 @@ namespace naex
     {
         return sensor_msgs::PointField::UINT32;
     }
-    template<>
-    size_t PointFieldTraits<uint32_t>::value_size() { return 4; }
 
     const sensor_msgs::PointField* find_field(
             const sensor_msgs::PointCloud2& cloud,
@@ -146,14 +133,15 @@ namespace naex
         sensor_msgs::PointCloud2 &cloud)
 //        const uint32_t offset = cloud.point_step)
     {
+        typedef typename std::remove_reference<T>::type C;
         sensor_msgs::PointField field;
         field.name = name;
         field.offset = cloud.point_step;
 //        field.offset = offset;
-        field.datatype = PointFieldTraits<T>::datatype();
+        field.datatype = PointFieldTraits<C>::datatype();
         field.count = count;
         cloud.fields.emplace_back(field);
-        cloud.point_step += count * PointFieldTraits<T>::value_size();
+        cloud.point_step += count * PointFieldTraits<C>::value_size();
         // Setting row_step is up to caller.
     }
 
