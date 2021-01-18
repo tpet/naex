@@ -52,6 +52,7 @@ public:
 //        dirty_indices_.reser
         dirty_indices_.reserve(10000);
         cloud_.reserve(DEFAULT_CAPACITY);
+        graph_.reserve(DEFAULT_CAPACITY);
     }
 
     FlannMat position_matrix(Index start = 0, Index end = 0)
@@ -606,8 +607,17 @@ public:
             return;
         }
         cloud_.reserve(n);
+        graph_.reserve(n);
         update_index();
         ROS_INFO("Capacity increased to %lu points: %.3f s.", n, t.seconds_elapsed());
+    }
+
+    std::vector<Index> nearby_indices(const flann::Matrix<Value>& origin, Value radius)
+    {
+        Lock lock(index_mutex_);
+        RadiusQuery<Value> q(*index_, origin, radius);
+        // TODO: Is this enough to move it?
+        return q.nn_[0];
     }
 
     void update_occupancy_unorganized(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
@@ -953,7 +963,12 @@ public:
         modifier.resize(cloud_.size());
 //        std::copy(&cloud_.front(), &cloud_.back(), &cloud.data.front());
 //        std::copy(cloud_.begin(), cloud_.end(), cloud.data.begin());
-        std::copy(cloud_.begin(), cloud_.end(), reinterpret_cast<Point*>(&cloud.data[0]));
+//        std::copy(cloud_.begin(), cloud_.end(), reinterpret_cast<Point*>(&cloud.data[0]));
+        const auto from = reinterpret_cast<const uint8_t*>(cloud_.data());
+        const auto to = reinterpret_cast<const uint8_t*>(cloud_.data() + cloud_.size());
+        auto out = cloud.data.data();
+        assert((to - from) == cloud.data.size());
+        std::copy(from, to, out);
     }
 
     template<typename It>

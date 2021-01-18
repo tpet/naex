@@ -94,7 +94,8 @@ public:
     Point():
             position_{},
             normal_{},
-            viewpoint_{}
+            viewpoint_{},
+            flags_(0)
     {}
 //
     Value position_[3];

@@ -191,6 +191,7 @@ namespace naex
             map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 5);
             map_dirty_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_dirty", 5);
             map_diff_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_diff", 5);
+            local_map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("local_map", 5);
 
             cloud_sub_ = nh_.subscribe("input_map", queue_size_, &Planner::cloud_received, this);
             for (int i = 0; i < num_input_clouds; ++i)
@@ -248,14 +249,14 @@ namespace naex
             }
             auto now = ros::Time::now();
             sensor_msgs::PointCloud2 vp_cloud;
-            flann::Matrix<Elem> vp(viewpoints_.data(), viewpoints_.size(), 3);
+            flann::Matrix<Elem> vp(viewpoints_.data(), viewpoints_.size() / 3, 3);
             create_xyz_cloud(vp, vp_cloud);
             vp_cloud.header.frame_id = map_frame_;
             vp_cloud.header.stamp = now;
             viewpoints_pub_.publish(vp_cloud);
 
             sensor_msgs::PointCloud2 other_vp_cloud;
-            flann::Matrix<Elem> other_vp(other_viewpoints_.data(), other_viewpoints_.size(), 3);
+            flann::Matrix<Elem> other_vp(other_viewpoints_.data(), other_viewpoints_.size() / 3, 3);
             create_xyz_cloud(other_vp, other_vp_cloud);
             other_vp_cloud.header.frame_id = map_frame_;
             other_vp_cloud.header.stamp = now;
@@ -1025,9 +1026,8 @@ namespace naex
             flann::Matrix<Elem> points(points_buf.begin(), n_added, 3);
 
             {
-                Lock lock(map_.dirty_mutex_);
+                Lock lock_dirty(map_.dirty_mutex_);
                 map_.merge(points, origin_mat);
-
                 map_.update_dirty();
 //            ROS_INFO("Input cloud with %u points merged: %.3f s.", n_added, t.seconds_elapsed());
                 // TODO: Mark affected map points for update?
@@ -1036,11 +1036,25 @@ namespace naex
                 sensor_msgs::PointCloud2 map_dirty;
                 map_dirty.header.frame_id = map_frame_;
                 map_dirty.header.stamp = cloud->header.stamp;
+                Lock lock_cloud(map_.cloud_mutex_);
                 map_.create_dirty_cloud(map_dirty);
                 map_dirty_pub_.publish(map_dirty);
                 ROS_DEBUG("Sending dirty cloud: %.3f s.", t_send.seconds_elapsed());
 
                 map_.clear_dirty();
+            }
+
+            if (local_map_pub_.getNumSubscribers() > 0)
+            {
+                Timer t_local;
+                sensor_msgs::PointCloud2 local_map;
+                local_map.header.frame_id = map_frame_;
+                local_map.header.stamp = cloud->header.stamp;
+                Lock lock_cloud(map_.cloud_mutex_);
+                const auto ind = map_.nearby_indices(origin_mat, 20.);
+                map_.create_debug_cloud(ind.begin(), ind.size(), local_map);
+                local_map_pub_.publish(local_map);
+                ROS_INFO("Sending local cloud: %.3f s.", t_local.seconds_elapsed());
             }
 
             if (map_pub_.getNumSubscribers() > 0)
@@ -1049,6 +1063,7 @@ namespace naex
                 sensor_msgs::PointCloud2 map_cloud;
                 map_cloud.header.frame_id = map_frame_;
                 map_cloud.header.stamp = cloud->header.stamp;
+                Lock lock(map_.cloud_mutex_);
                 map_.create_cloud(map_cloud);
                 map_pub_.publish(map_cloud);
                 ROS_DEBUG("Sending map: %.3f s.", t_send.seconds_elapsed());
@@ -1079,6 +1094,7 @@ namespace naex
         ros::Publisher map_pub_;
         ros::Publisher map_dirty_pub_;
         ros::Publisher map_diff_pub_;
+        ros::Publisher local_map_pub_;
         ros::Timer planning_timer_;
         ros::ServiceServer get_plan_service_;
         Mutex last_request_mutex_;
