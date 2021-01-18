@@ -166,8 +166,12 @@ public:
         dist_(queries.rows)
     {
         flann::SearchParams params;
+        params.checks = 32;
         params.cores = 0;
-        index.radiusSearch(queries, nn_, dist_, radius, params);
+        params.sorted = true;
+        params.use_heap = flann::FLANN_True;
+        const auto radius_2 = radius * radius;
+        index.radiusSearch(queries, nn_, dist_, radius_2, params);
     }
     std::vector<std::vector<int>> nn_;
     std::vector<std::vector<T>> dist_;
