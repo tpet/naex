@@ -40,6 +40,7 @@ typedef Index Edge;
 typedef Elem Cost;
 
 typedef flann::Matrix<Value> FlannMat;
+typedef FlannMat FMat;
 typedef flann::Index<flann::L2_3D<Value>> FlannIndex;
 typedef std::shared_ptr<FlannIndex> FlannIndexPtr;
 typedef std::shared_ptr<const FlannIndex> ConstFlannIndexPtr;
@@ -117,8 +118,11 @@ public:
     Value mean_abs_ground_diff_;
     // Viewpoint (for occupancy assessment and measurement distance)
     Value viewpoint_[3];
-    // Distance to nearest actor.
+    // Distance (Euclidean + time) to this actor and other actors.
     Value dist_to_actor_;
+    Value actor_last_visit_;
+    Value dist_to_other_actors_;
+    Value other_actors_last_visit_;
     // Distance to nearest obstacle (non horizontal point).
     Value dist_to_obstacle_;
     // Point flags accoring to Flags.

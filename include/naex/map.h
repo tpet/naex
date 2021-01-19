@@ -339,13 +339,13 @@ public:
     {
         // TODO: Limit to valid edges here or just by costs?
 //        return { u * num_edges(), (u + 1) * num_edges() };
-        return { u * Neighborhood::K_NEIGHBORS, (u + 1) * Neighborhood::K_NEIGHBORS };
+        return { u * Neighborhood::K_NEIGHBORS + 1, (u + 1) * Neighborhood::K_NEIGHBORS };
     }
     inline Edge out_degree(const Vertex& u) const
     {
         // TODO: Compute true number based on valid neighbors.
 //        return num_edges();
-        return Neighborhood::K_NEIGHBORS;
+        return Neighborhood::K_NEIGHBORS - 1;
     }
     inline Vertex source(const Edge& e) const
     {
@@ -612,10 +612,11 @@ public:
         ROS_INFO("Capacity increased to %lu points: %.3f s.", n, t.seconds_elapsed());
     }
 
-    std::vector<Index> nearby_indices(const flann::Matrix<Value>& origin, Value radius)
+//    std::vector<Index> nearby_indices(const flann::Matrix<Value>& origin, Value radius)
+    std::vector<Index> nearby_indices(Value* origin, Value radius)
     {
         Lock lock(index_mutex_);
-        RadiusQuery<Value> q(*index_, origin, radius);
+        RadiusQuery<Value> q(*index_, flann::Matrix<Value>(origin, 1, 3), radius);
         // TODO: Is this enough to move it?
         return q.nn_[0];
     }
@@ -925,6 +926,15 @@ public:
 
         cloud.point_step = uint32_t(offsetof(Point, dist_to_actor_));
         append_field<decltype(Point().dist_to_actor_)>("dist_to_actor", 1, cloud);
+
+        cloud.point_step = uint32_t(offsetof(Point, actor_last_visit_));
+        append_field<decltype(Point().actor_last_visit_)>("actor_last_visit", 1, cloud);
+
+        cloud.point_step = uint32_t(offsetof(Point, dist_to_other_actors_));
+        append_field<decltype(Point().dist_to_other_actors_)>("dist_to_other_actors", 1, cloud);
+
+        cloud.point_step = uint32_t(offsetof(Point, other_actors_last_visit_));
+        append_field<decltype(Point().other_actors_last_visit_)>("other_actors_last_visit", 1, cloud);
 
         cloud.point_step = uint32_t(offsetof(Point, dist_to_obstacle_));
         append_field<decltype(Point().dist_to_obstacle_)>("dist_to_obstacle", 1, cloud);

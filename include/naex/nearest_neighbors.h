@@ -161,7 +161,7 @@ class RadiusQuery
 public:
     RadiusQuery(const flann::Index<flann::L2_3D<T>>& index,
                 const flann::Matrix<T>& queries,
-                const T radius) :
+                const T radius):
         nn_(queries.rows),
         dist_(queries.rows)
     {
