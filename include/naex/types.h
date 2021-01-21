@@ -95,8 +95,25 @@ public:
     Point():
             position_{},
             normal_{},
+            normal_support_(0),
+            ground_diff_std_(std::numeric_limits<Value>::quiet_NaN()),
+            min_ground_diff_(std::numeric_limits<Value>::quiet_NaN()),
+            max_ground_diff_(std::numeric_limits<Value>::quiet_NaN()),
+            mean_abs_ground_diff_(std::numeric_limits<Value>::quiet_NaN()),
             viewpoint_{},
-            flags_(0)
+            dist_to_actor_(std::numeric_limits<Value>::quiet_NaN()),
+            actor_last_visit_(std::numeric_limits<Value>::quiet_NaN()),
+            dist_to_other_actors_(std::numeric_limits<Value>::quiet_NaN()),
+            other_actors_last_visit_(std::numeric_limits<Value>::quiet_NaN()),
+            dist_to_obstacle_(std::numeric_limits<Value>::quiet_NaN()),
+            flags_(0),
+            num_empty_(0),
+            num_occupied_(0),
+            num_obstacle_pts_(0),
+            num_edge_neighbors_(0),
+            path_cost_(std::numeric_limits<Value>::quiet_NaN()),
+            reward_(std::numeric_limits<Value>::quiet_NaN()),
+            relative_cost_(std::numeric_limits<Value>::quiet_NaN())
     {}
 //
     Value position_[3];

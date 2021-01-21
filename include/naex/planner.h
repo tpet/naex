@@ -58,24 +58,24 @@ namespace naex
                 robot_frame_("base_footprint"),
                 robot_frames_(),
                 max_cloud_age_(5.0),
-                max_pitch_(static_cast<float>(30. / 180. * M_PI)),
-                max_roll_(static_cast<float>(30. / 180. * M_PI)),
+//                max_pitch_(static_cast<float>(30. / 180. * M_PI)),
+//                max_roll_(static_cast<float>(30. / 180. * M_PI)),
                 empty_ratio_(2),
                 filter_robots_(false),
                 neighborhood_knn_(12),
                 neighborhood_radius_(.5),
                 min_normal_pts_(9),
                 normal_radius_(0.5),
-                max_nn_height_diff_(0.15),
+//                max_nn_height_diff_(0.15),
                 viewpoints_update_freq_(1.0),
                 viewpoints_(),
-                clearance_low_(0.15),
-                clearance_high_(0.8),
-                min_points_obstacle_(3),
-                max_ground_diff_std_(0.1),
-                max_ground_abs_diff_mean_(0.1),
-                edge_min_centroid_offset_(0.75),
-                min_dist_to_obstacle_(0.7),
+//                clearance_low_(0.15),
+//                clearance_high_(0.8),
+//                min_points_obstacle_(3),
+//                max_ground_diff_std_(0.1),
+//                max_ground_abs_diff_mean_(0.1),
+//                edge_min_centroid_offset_(0.75),
+//                min_dist_to_obstacle_(0.7),
                 other_viewpoints_(),
                 min_vp_distance_(1.5),
                 max_vp_distance_(5.0),
@@ -103,19 +103,21 @@ namespace naex
             Lock lock(initialized_mutex_);
             initialized_ = true;
             time_initialized_ = ros::Time::now().toSec();
-            ROS_INFO("Initialized (%.3f s).", t.seconds_elapsed());
+            ROS_INFO("Initialized at %.1f s (%.3f s).",
+                     time_initialized_, t.seconds_elapsed());
         }
 
         void update_params(const ros::WallTimerEvent& evt)
         {
-            pnh_.param("max_nn_height_diff", max_nn_height_diff_, max_nn_height_diff_);
-            pnh_.param("clearance_low", clearance_low_, clearance_low_);
-            pnh_.param("clearance_high", clearance_high_, clearance_high_);
-            pnh_.param("min_points_obstacle", min_points_obstacle_, min_points_obstacle_);
-            pnh_.param("max_ground_diff_std", max_ground_diff_std_, max_ground_diff_std_);
-            pnh_.param("max_ground_abs_diff_mean", max_ground_abs_diff_mean_, max_ground_abs_diff_mean_);
-            pnh_.param("edge_min_centroid_offset", edge_min_centroid_offset_, edge_min_centroid_offset_);
-            pnh_.param("min_dist_to_obstacle", min_dist_to_obstacle_, min_dist_to_obstacle_);
+//            pnh_.param("max_nn_height_diff", map_.max_ground_diff_std_, max_nn_height_diff_);
+            pnh_.param("clearance_radius", map_.clearance_radius_, map_.clearance_radius_);
+            pnh_.param("clearance_low", map_.clearance_low_, map_.clearance_low_);
+            pnh_.param("clearance_high", map_.clearance_high_, map_.clearance_high_);
+            pnh_.param("min_points_obstacle", map_.min_points_obstacle_, map_.min_points_obstacle_);
+            pnh_.param("max_ground_diff_std", map_.max_ground_diff_std_, map_.max_ground_diff_std_);
+            pnh_.param("max_mean_abs_ground_diff", map_.max_mean_abs_ground_diff_, map_.max_mean_abs_ground_diff_);
+            pnh_.param("edge_min_centroid_offset", map_.edge_min_centroid_offset_, map_.edge_min_centroid_offset_);
+            pnh_.param("min_dist_to_obstacle", map_.min_dist_to_obstacle_, map_.min_dist_to_obstacle_);
         }
 
         void configure()
@@ -126,21 +128,22 @@ namespace naex
             pnh_.param("robot_frame", robot_frame_, robot_frame_);
             pnh_.param("robot_frames", robot_frames_, robot_frames_);
             pnh_.param("max_cloud_age", max_cloud_age_, max_cloud_age_);
-            pnh_.param("max_pitch", max_pitch_, max_pitch_);
-            pnh_.param("max_roll", max_roll_, max_roll_);
-            pnh_.param("neighborhood_knn", neighborhood_knn_, neighborhood_knn_);
-            pnh_.param("neighborhood_radius", neighborhood_radius_, neighborhood_radius_);
+            pnh_.param("max_pitch", map_.max_pitch_, map_.max_pitch_);
+            pnh_.param("max_roll", map_.max_roll_, map_.max_roll_);
+//            pnh_.param("neighborhood_knn", map_.neighborhood_knn_, neighborhood_knn_);
+            pnh_.param("neighborhood_radius", map_.neighborhood_radius_, map_.neighborhood_radius_);
             pnh_.param("min_normal_pts", min_normal_pts_, min_normal_pts_);
             pnh_.param("normal_radius", normal_radius_, normal_radius_);
 
-            pnh_.param("max_nn_height_diff", max_nn_height_diff_, max_nn_height_diff_);
-            pnh_.param("clearance_low", clearance_low_, clearance_low_);
-            pnh_.param("clearance_high", clearance_high_, clearance_high_);
-            pnh_.param("min_points_obstacle", min_points_obstacle_, min_points_obstacle_);
-            pnh_.param("max_ground_diff_std", max_ground_diff_std_, max_ground_diff_std_);
-            pnh_.param("max_ground_abs_diff_mean", max_ground_abs_diff_mean_, max_ground_abs_diff_mean_);
-            pnh_.param("edge_min_centroid_offset", edge_min_centroid_offset_, edge_min_centroid_offset_);
-            pnh_.param("min_dist_to_obstacle", min_dist_to_obstacle_, min_dist_to_obstacle_);
+            update_params(ros::WallTimerEvent());
+//            pnh_.param("max_nn_height_diff", max_nn_height_diff_, max_nn_height_diff_);
+//            pnh_.param("clearance_low", clearance_low_, clearance_low_);
+//            pnh_.param("clearance_high", clearance_high_, clearance_high_);
+//            pnh_.param("min_points_obstacle", min_points_obstacle_, min_points_obstacle_);
+//            pnh_.param("max_ground_diff_std", max_ground_diff_std_, max_ground_diff_std_);
+//            pnh_.param("max_ground_abs_diff_mean", max_ground_abs_diff_mean_, max_ground_abs_diff_mean_);
+//            pnh_.param("edge_min_centroid_offset", edge_min_centroid_offset_, edge_min_centroid_offset_);
+//            pnh_.param("min_dist_to_obstacle", min_dist_to_obstacle_, min_dist_to_obstacle_);
 
             pnh_.param("viewpoints_update_freq", viewpoints_update_freq_, viewpoints_update_freq_);
             pnh_.param("min_vp_distance", min_vp_distance_, min_vp_distance_);
@@ -214,6 +217,16 @@ namespace naex
             get_plan_service_ = nh_.advertiseService("get_plan", &Planner::plan, this);
         }
 
+        Value inline time_from_init(const double time)
+        {
+            return Value(time - time_initialized_);
+        }
+
+        Value inline time_from_init(const ros::Time time)
+        {
+            return time_from_init(time.toSec());
+        }
+
         void gather_viewpoints(const ros::TimerEvent& event)
         {
             ROS_DEBUG("Gathering viewpoints for %lu actors.", robot_frames_.size());
@@ -243,27 +256,31 @@ namespace naex
                     Vec3 pos(Value(tf.transform.translation.x),
                              Value(tf.transform.translation.y),
                              Value(tf.transform.translation.z));
-                    Lock lock(map_.index_mutex_);
+
+                    Lock cloud_lock(map_.cloud_mutex_);
+                    Lock index_lock(map_.index_mutex_);
                     RadiusQuery<Value> q(*map_.index_, FMat(pos.data(), 1, 3), max_vp_distance_);
                     assert(q.nn_.size() == 1);
                     assert(q.dist_.size() == 1);
-                    Lock cloud_lock(map_.cloud_mutex_);
+
+                    ROS_INFO("%lu / %lu points within %.1f m from %s origin.",
+                             q.nn_[0].size(), map_.index_->size(), max_vp_distance_, frame.c_str());
                     for (Index i = 0; i < q.nn_[0].size(); ++i)
                     {
                         const Vertex v = q.nn_[0][i];
                         const Value d = std::sqrt(q.dist_[0][i]);
-                        const Value t = Value(time.toSec() - time_initialized_);
+                        const Value t = time_from_init(time);
                         // TODO: Account for time to enable patrolling.
                         if (frame == robot_frame_)
                         {
-                            map_.cloud_[v].dist_to_actor_ = (map_.cloud_[v].actor_last_visit_ > 0.
+                            map_.cloud_[v].dist_to_actor_ = (std::isfinite(map_.cloud_[v].actor_last_visit_)
                                                              ? std::min(map_.cloud_[v].dist_to_actor_, d)
                                                              : d);
                             map_.cloud_[v].actor_last_visit_ = t;
                         }
                         else
                         {
-                            map_.cloud_[v].dist_to_other_actors_ = (map_.cloud_[v].other_actors_last_visit_ > 0.
+                            map_.cloud_[v].dist_to_other_actors_ = (std::isfinite(map_.cloud_[v].other_actors_last_visit_)
                                                                     ? std::min(map_.cloud_[v].dist_to_other_actors_, d)
                                                                     : d);
                             map_.cloud_[v].other_actors_last_visit_ = t;
@@ -485,6 +502,14 @@ namespace naex
 //            q.nn_
 //        }
 
+        Value distance_reward(Value distance)
+        {
+            Value r = std::isfinite(distance) ? distance : max_vp_distance_;
+            r = r >= min_vp_distance_ ? r : 0.f;
+            r /= max_vp_distance_;
+            return r;
+        }
+
 //        bool plan(const geometry_msgs::PoseStamped& start)
         bool plan(nav_msgs::GetPlanRequest& req, nav_msgs::GetPlanResponse& res)
         {
@@ -507,6 +532,7 @@ namespace naex
                 Lock lock(last_request_mutex_);
                 last_request_ = req;
             }
+
             geometry_msgs::PoseStamped start = req.start;
             if (!valid_point(start.pose.position.x,
                              start.pose.position.y,
@@ -526,7 +552,10 @@ namespace naex
                 }
             }
 
-            Lock cloud_lock(map_.cloud_mutex_);
+        Lock cloud_lock(map_.cloud_mutex_);
+        Lock index_lock(map_.index_mutex_);
+        t.reset();
+
             const size_t min_map_points = Neighborhood::K_NEIGHBORS;
             if (map_.size() < min_map_points)
             {
@@ -538,13 +567,13 @@ namespace naex
             // Moved to input_map_received above.
 
             // Get robot positions.
-            std::vector<Elem> robots;
-            if (filter_robots_)
-            {
-                // Don't wait for robot positions for planning.
-                // Robots in reach should be available.
-                robots = find_robots(map_frame_, ros::Time(), 0.f);
-            }
+//            std::vector<Elem> robots;
+//            if (filter_robots_)
+//            {
+//                // Don't wait for robot positions for planning.
+//                // Robots in reach should be available.
+//                robots = find_robots(map_frame_, ros::Time(), 0.f);
+//            }
 
             // TODO: Deal with occupancy on merging.
             // TODO: Index rebuild incrementally with new points.
@@ -723,12 +752,9 @@ namespace naex
             // TODO: Account for time to enable patrolling.
             for (Vertex v = 0; v < path_costs.size(); ++v)
             {
-                const Value self_dist = map_.cloud_[v].actor_last_visit_ > 0.
-                                        ? map_.cloud_[v].dist_to_actor_ : max_vp_distance_;
-                const Value other_dist = map_.cloud_[v].other_actors_last_visit_ > 0.
-                                         ? map_.cloud_[v].dist_to_other_actors_ : max_vp_distance_;
-                map_.cloud_[v].reward_ = std::max(std::min(self_dist, other_dist),
-                                                  self_factor_ * self_dist);
+                map_.cloud_[v].reward_ = std::max(std::min(distance_reward(map_.cloud_[v].dist_to_actor_),
+                                                           distance_reward(map_.cloud_[v].other_actors_last_visit_)),
+                                                  self_factor_ * distance_reward(map_.cloud_[v].dist_to_actor_));
                 map_.cloud_[v].reward_ *= (1 + map_.cloud_[v].num_edge_neighbors_);
 
                 // Decrease rewards in specific areas (staging area).
@@ -1005,7 +1031,8 @@ namespace naex
             Eigen::Translation3f translation(tf.transform.translation.x,
                     tf.transform.translation.y,
                     tf.transform.translation.z);
-            Eigen::Affine3f transform = translation * rotation;
+//            Eigen::Affine3f transform = translation * rotation;
+            Eigen::Isometry3f transform = translation * rotation;
 
             // TODO: Update map occupancy based on reconstructed surface of 2D cloud.
 
@@ -1059,6 +1086,9 @@ namespace naex
             ROS_DEBUG("%lu / %lu points kept by distance and robot filters.",
                       size_t(n_added), size_t(n_pts));
             flann::Matrix<Elem> points(points_buf.begin(), n_added, 3);
+
+            Lock cloud_lock(map_.cloud_mutex_);
+            Lock index_lock(map_.index_mutex_);
 
             {
                 Lock lock_dirty(map_.dirty_mutex_);
@@ -1145,8 +1175,8 @@ namespace naex
         std::string robot_frame_;
         std::map<std::string, std::string> robot_frames_;
         float max_cloud_age_;
-        float max_pitch_;
-        float max_roll_;
+//        float max_pitch_;
+//        float max_roll_;
         int empty_ratio_;
         bool filter_robots_;
 
@@ -1155,14 +1185,14 @@ namespace naex
         int min_normal_pts_;
         float normal_radius_;
 
-        float max_nn_height_diff_;
-        float clearance_low_;
-        float clearance_high_;
-        float min_points_obstacle_;
-        float max_ground_diff_std_;
-        float max_ground_abs_diff_mean_;
-        float edge_min_centroid_offset_;
-        float min_dist_to_obstacle_;
+//        float max_nn_height_diff_;
+//        float clearance_low_;
+//        float clearance_high_;
+//        float min_points_obstacle_;
+//        float max_ground_diff_std_;
+//        float max_ground_abs_diff_mean_;
+//        float edge_min_centroid_offset_;
+//        float min_dist_to_obstacle_;
 
         Mutex viewpoints_mutex_;
         float viewpoints_update_freq_;

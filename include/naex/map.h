@@ -6,6 +6,7 @@
 #include <mutex>
 #include <naex/buffer.h>
 #include <naex/clouds.h>
+#include <naex/geom.h>
 #include <naex/iterators.h>
 #include <naex/nearest_neighbors.h>
 #include <naex/timer.h>
@@ -138,18 +139,30 @@ public:
             return std::numeric_limits<Cost>::infinity();
         }
 //        Cost d = std::sqrt(cloud_[v0].distances_[v1_index]);
-        Cost d = std::sqrt(graph_[v0].distances_[v1_index]);
-        if (d > clearance_radius_)
+        Cost c = graph_[v0].distances_[v1_index];
+        if (c > clearance_radius_)
         {
             return std::numeric_limits<Cost>::infinity();
         }
-        Elem height_diff = cloud_[v1].position_[2] - cloud_[v0].position_[2];
-        Elem inclination = std::asin(std::abs(height_diff) / d);
-        if (inclination > max_pitch_)
+
+        // Check pitch and roll limits.
+        const Vec3 forward = ConstVec3Map(cloud_[v1].position_) - ConstVec3Map(cloud_[v0].position_);
+        const Vec3 left = ConstVec3Map(cloud_[v1].normal_).cross(forward);
+        Value pitch = inclination(forward);
+        Value roll = inclination(left);
+        if (std::abs(pitch) >= max_pitch_ || std::abs(roll) >= max_roll_)
         {
             return std::numeric_limits<Cost>::infinity();
         }
-        // TODO: Check pitch and roll separately.
+//        Elem height_diff = cloud_[v1].position_[2] - cloud_[v0].position_[2];
+//        Elem pitch = std::asin(std::abs(height_diff) / c);
+//        Elem pitch = std::asin(height_diff / c);
+//        if (std::abs(pitch) > max_pitch_)
+//        {
+//            return std::numeric_limits<Cost>::infinity();
+//        }
+//        Vec3 y = ConstVec3(cloud_[v0].position_)
+
         /*
         Elem pitch0 = std::acos(normals_[v0][2]);
         if (pitch0 > max_pitch_)
@@ -167,10 +180,21 @@ public:
         // Initialize with distance computed in NN search.
         // Multiple with relative pitch and roll.
 //            d *= (1.f + (pitch0 + pitch1 + inclination) / 3.f / max_pitch_ + (roll0 + roll1) / 2.f / max_roll_);
-        d *= (1.f + (inclination / max_pitch_));
+        c *= (Value(1) + (pitch / max_pitch_));
+        c *= (Value(1) + (roll / max_roll_));
 //            std::cout << v0 << " -> " << v1 << ": " << d << std::endl;
+        // Penalize distance to obstacles and other actors.
+        if (std::isfinite(cloud_[v1].dist_to_obstacle_))
+        {
+            c *= Value(1) + std::max(Value(0),
+                                     Value(1) - cloud_[v1].dist_to_obstacle_ / (Value(2) * clearance_radius_));
+        }
+        // Would need current position of other actors.
+//        c *= std::isfinite(cloud_[v1].dist_to_other_actors_)
+//                ? std::max(0.f, 1. - cloud_[v1].dist_to_other_actors_ / (2. * clearance_radius_))
+//                : 1.f;
         // TODO: Make distance correspond to expected travel time.
-        return d;
+        return c;
     }
 
 //    Cost edge_cost(Index e)
@@ -393,6 +417,11 @@ public:
         const auto n = dirty_indices_.size();
         dirty_indices_.clear();
         ROS_DEBUG("%lu dirty indices cleared.", n);
+    }
+
+    void estimate_plane(Index i)
+    {
+
     }
 
     template<typename It>
@@ -621,6 +650,137 @@ public:
         return q.nn_[0];
     }
 
+//    template<typename C>  // C = Camera
+    void update_occupancy_organized(const sensor_msgs::PointCloud2& cloud,
+                                    const geometry_msgs::Transform& cloud_to_map_tf)
+//                                    const C* camera)
+    {
+        Timer t;
+        Timer t_part;
+
+        if (empty())
+        {
+            ROS_INFO("No map points for updating occupancy.");
+            return;
+        }
+
+        assert(cloud.height > 1);
+        size_t n_pts = cloud.height * cloud.width;
+        if (n_pts == 0)
+        {
+            ROS_INFO("No input points for updating occupancy.");
+            return;
+        }
+
+
+        // TODO: Improve efficiency with camera model and cloud structure.
+
+//        Quat rotation(Value(cloud_to_map_tf.rotation.w),
+//                      Value(cloud_to_map_tf.rotation.x),
+//                      Value(cloud_to_map_tf.rotation.y),
+//                      Value(cloud_to_map_tf.rotation.z));
+//        Eigen::Translation3f translation(Value(cloud_to_map_tf.translation.x),
+//                                         Value(cloud_to_map_tf.translation.y),
+//                                         Value(cloud_to_map_tf.translation.z));
+//        Eigen::Isometry3f cloud_to_map = translation * rotation;
+        Eigen::Isometry3f cloud_to_map(tf2::transformToEigen(cloud_to_map_tf));
+        Eigen::Isometry3f map_to_cloud = cloud_to_map.inverse(Eigen::Isometry);
+
+        // Create sensor ray directions with an index.
+        t_part.reset();
+        sensor_msgs::PointCloud2ConstIterator<float> x_begin(cloud, "x");
+//        flann::Matrix<float> cloud_mat(&cloud_begin[0], 1, 3, cloud.point_step);
+        std::vector<Value> dirs(3 * n_pts);
+        Value* dir_ptr = dirs.data();
+        for (auto x_it = x_begin; x_it != x_it.end(); ++x_it, dir_ptr += 3)
+        {
+            Vec3Map dir(dir_ptr);
+            dir = ConstVec3Map(&x_it[0]).normalized();
+        }
+        FlannIndex dir_index(FlannMat(dirs.data(), n_pts, 3), flann::KDTreeSingleIndexParams());
+        ROS_INFO("%lu sensor rays and index created (%.6f s).", n_pts, t_part.seconds_elapsed());
+
+        // Find closest map points to sensor origin.
+        t_part.reset();
+        Vec3 origin = cloud_to_map.translation();
+        RadiusQuery<Value> q_map(*index_, FlannMat(origin.data(), 1, 3), 10.f);
+        ROS_INFO("%lu closest map points found (%.6f s).", q_map.nn_[0].size(), t_part.seconds_elapsed());
+
+        // Test each map point, whether we can see through.
+        std::vector<Index> nn_buf(1, INVALID_VERTEX);
+        std::vector<Value> dist_buf(1, std::numeric_limits<Value>::quiet_NaN());
+        flann::Matrix<Index> nn(nn_buf.data(), 1, 1);
+        flann::Matrix<Value> dist(dist_buf.data(), 1, 1);
+        flann::SearchParams params;
+        params.checks = 64;
+        params.cores = 0;
+        params.sorted = true;
+//        std::vector<Index> fan_nn(4, INVALID_VERTEX);
+//        std::vector<Value> fan_dist(4, std::numeric_limits<Value>::quiet_NaN());
+        typedef std::pair<Index, Value> IVP;
+        std::vector<IVP> fan(4, {INVALID_VERTEX, std::numeric_limits<Value>::quiet_NaN()});
+        // Comparator for descending order of second member.
+        const auto comp = [](const IVP& a, const IVP& b) { return a.second > b.second; };
+        for (const auto i: q_map.nn_[0])
+        {
+            Vec3 dir = (map_to_cloud * ConstVec3Map(cloud_[i].position_)).normalized();
+            dir_index.knnSearch(FlannMat(dir.data(), 1, 3), nn, dist, 1, params);
+            Index j = nn_buf[0];
+            Index r = j / cloud.width;
+            Index c = j % cloud.width;
+            // Seek containing triangle among incident ones.
+            // Test occlusion of the containing triangle.
+//            fan_nn[0] = (r > 0) ? ((r - 1) * cloud.width + c) : INVALID_VERTEX;
+//            fan_dist[0] = (fan_nn[0] != INVALID_VERTEX) ? : std::numeric_limits<Value>::infinity();
+            Index k = 0;
+            fan[k].first = r > 0
+                           ? (r - 1) * cloud.width + c
+                           : INVALID_VERTEX;
+            fan[k].second = fan[k].first != INVALID_VERTEX
+                            ? ConstVec3Map(&dirs[3 * fan[k].first]).dot(dir)
+                            : -std::numeric_limits<Value>::infinity();
+
+            ++k;
+            fan[k].first = c > 0
+                           ? r * cloud.width + c - 1
+                           : INVALID_VERTEX;
+            fan[k].second = fan[k].first != INVALID_VERTEX
+                            ? ConstVec3Map(&dirs[3 * fan[k].first]).dot(dir)
+                            : -std::numeric_limits<Value>::infinity();
+
+            ++k;
+            fan[k].first = c < cloud.width - 1
+                           ? r * cloud.width + c + 1
+                           : INVALID_VERTEX;
+            fan[k].second = fan[k].first != INVALID_VERTEX
+                            ? ConstVec3Map(&dirs[3 * fan[k].first]).dot(dir)
+                            : -std::numeric_limits<Value>::infinity();
+
+            ++k;
+            fan[k].first = r < cloud.height - 1
+                           ? (r + 1) * cloud.width + c
+                           : INVALID_VERTEX;
+            fan[k].second = fan[k].first != INVALID_VERTEX
+                            ? ConstVec3Map(&dirs[3 * fan[k].first]).dot(dir)
+                            : -std::numeric_limits<Value>::infinity();
+
+            // Sort nearby indices by cosine distance.
+            std::sort(fan.begin(), fan.end(), comp);
+            // Construct plane from three points of nearest directions.
+            // Test signed distance from the plane to assess occlusion.
+            ConstVec3Map p0(&(x_begin + i)[0]);
+            ConstVec3Map p1(&(x_begin + fan[0].first)[0]);
+            ConstVec3Map p2(&(x_begin + fan[1].first)[0]);
+            // TODO: Orient normal.
+            Vec3 n = (p1 - p0).cross(p2 - p0).normalized();
+//            if ()
+//            {
+//                n *= Value(-1.);
+//            }
+        }
+        ROS_INFO("Occupancy updated (%.3f s).", t.seconds_elapsed());
+    }
+
     void update_occupancy_unorganized(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
     {
         // TODO: Update static (hit) / dynamic (see through) points.
@@ -636,10 +796,7 @@ public:
             if (std::isnan(norm) || std::isinf(norm) || norm < 1e-3) {
                 ROS_INFO_THROTTLE(1.0,
                                   "Could not normalize direction [%.1g, %.1g, %.1g], norm %.1g.",
-                                  dir.x(),
-                                  dir.y(),
-                                  dir.z(),
-                                  norm);
+                                  dir.x(), dir.y(), dir.z(), norm);
                 dir = Vec3::Zero();
             }
             else {
@@ -669,10 +826,7 @@ public:
             if (std::isnan(norm) || std::isinf(norm) || norm < 1e-3) {
                 ROS_INFO_THROTTLE(1.0,
                                   "Could not normalize direction [%.1g, %.1g, %.1g], norm %.1g.",
-                                  dir.x(),
-                                  dir.y(),
-                                  dir.z(),
-                                  norm);
+                                  dir.x(), dir.y(), dir.z(), norm);
                 dir = Vec3::Zero();
             }
             else {
@@ -884,7 +1038,8 @@ public:
         }
 
         // TODO: Rebuild index time to time, don't wait till it doubles in size.
-        index_->addPoints(position_matrix(start));
+        float rebuild_threshold = (index_->size() + 1000.f) / index_->size();
+        index_->addPoints(position_matrix(start), rebuild_threshold);
 
         ROS_INFO("%lu points merged into map with %lu points (%.3f s).",
                  size_t(size() - start),
