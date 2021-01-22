@@ -18,17 +18,27 @@ typedef Elem Value;
 typedef int Index;
 
 // Arrays and matrices
+typedef Eigen::Matrix<Value, 4, 1, Eigen::DontAlign> Vec4;
+typedef Eigen::Map<Vec4> Vec4Map;
+typedef Eigen::Map<const Vec4> ConstVec4Map;
+
 typedef Eigen::Matrix<Value, 3, 1, Eigen::DontAlign> Vec3;
 typedef Eigen::Map<Vec3> Vec3Map;
 typedef Eigen::Map<const Vec3> ConstVec3Map;
+
 typedef Eigen::Matrix<Value, 2, 1, Eigen::DontAlign> Vec2;
 typedef Eigen::Map<Vec2> Vec2Map;
-typedef Eigen::Map<const Vec3> ConstVec2Map;
+typedef Eigen::Map<const Vec2> ConstVec2Map;
+
 typedef Eigen::Matrix<Value, 3, 3, Eigen::DontAlign> Mat3;
+typedef Eigen::Matrix<Value, 4, 4, Eigen::DontAlign> Mat4;
+typedef Eigen::Matrix<Value, 3, Eigen::Dynamic, Eigen::DontAlign> Mat3X;
+typedef Eigen::Map<Mat3X> MatXMap;
+typedef Eigen::Map<const Mat3X> ConstMatXMap;
+
 typedef Eigen::Quaternion<Value, Eigen::DontAlign> Quat;
-typedef Eigen::Matrix<Value, 3, Eigen::Dynamic, Eigen::DontAlign> MatX;
-typedef Eigen::Map<MatX> MatXMap;
-typedef Eigen::Map<const MatX> ConstMatXMap;
+typedef Eigen::Map<Quat> QuatMap;
+typedef Eigen::Map<const Quat> ConstQuatMap;
 
 typedef std::vector<Index> Indices;
 

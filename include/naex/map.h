@@ -33,7 +33,8 @@ public:
             points_min_dist_(0.2f),
             min_empty_cos_(0.3f),
             // Occupancy
-            empty_ratio_(2.0f),
+            min_num_empty_(4),
+            min_empty_ratio_(2.0f),
             neighborhood_radius_(0.6f),
             edge_min_centroid_offset_(0.5f),
             // Traversability
@@ -110,9 +111,16 @@ public:
 //        return flag & value;
 //    }
 
-    bool point_empty(Index i)
+//    bool point_empty(Index i)
+//    {
+//        return cloud_[i].num_empty_ >= min_num_empty_
+//                && Value(cloud_[i].num_empty_) / cloud_[i].num_occupied_ >= min_empty_ratio_;
+//    }
+
+    bool point_empty(const Point& p)
     {
-        return float(cloud_[i].num_empty_) / cloud_[i].num_occupied_ >= empty_ratio_;
+        return p.num_empty_ >= min_num_empty_
+            && Value(p.num_empty_) / p.num_occupied_ >= min_empty_ratio_;
     }
 
     bool point_near(Index i, const std::vector<Value>& points, Value radius)
@@ -698,15 +706,20 @@ public:
             dir = ConstVec3Map(&x_it[0]).normalized();
         }
         FlannIndex dir_index(FlannMat(dirs.data(), n_pts, 3), flann::KDTreeSingleIndexParams());
+        dir_index.buildIndex();
         ROS_INFO("%lu sensor rays and index created (%.6f s).", n_pts, t_part.seconds_elapsed());
 
         // Find closest map points to sensor origin.
+        Lock index_lock(index_mutex_);
+        Lock cloud_lock(cloud_mutex_);
+        Lock dirty_lock(dirty_mutex_);
         t_part.reset();
         Vec3 origin = cloud_to_map.translation();
         RadiusQuery<Value> q_map(*index_, FlannMat(origin.data(), 1, 3), 10.f);
         ROS_INFO("%lu closest map points found (%.6f s).", q_map.nn_[0].size(), t_part.seconds_elapsed());
 
         // Test each map point, whether we can see through.
+        t_part.reset();
         std::vector<Index> nn_buf(1, INVALID_VERTEX);
         std::vector<Value> dist_buf(1, std::numeric_limits<Value>::quiet_NaN());
         flann::Matrix<Index> nn(nn_buf.data(), 1, 1);
@@ -721,9 +734,16 @@ public:
         std::vector<IVP> fan(4, {INVALID_VERTEX, std::numeric_limits<Value>::quiet_NaN()});
         // Comparator for descending order of second member.
         const auto comp = [](const IVP& a, const IVP& b) { return a.second > b.second; };
+        Index n_occupied = 0;
+        Index n_empty = 0;
+        Index n_above = 0;
+        Index n_modified = 0;
         for (const auto i: q_map.nn_[0])
         {
-            Vec3 dir = (map_to_cloud * ConstVec3Map(cloud_[i].position_)).normalized();
+//            ConstVec3Map p(cloud_[i].position_);
+            Vec3 p = map_to_cloud * ConstVec3Map(cloud_[i].position_);
+//            Vec3 dir = (map_to_cloud * p).normalized();
+            Vec3 dir = p.normalized();
             dir_index.knnSearch(FlannMat(dir.data(), 1, 3), nn, dist, 1, params);
             Index j = nn_buf[0];
             Index r = j / cloud.width;
@@ -768,16 +788,81 @@ public:
             std::sort(fan.begin(), fan.end(), comp);
             // Construct plane from three points of nearest directions.
             // Test signed distance from the plane to assess occlusion.
-            ConstVec3Map p0(&(x_begin + i)[0]);
-            ConstVec3Map p1(&(x_begin + fan[0].first)[0]);
-            ConstVec3Map p2(&(x_begin + fan[1].first)[0]);
+//            ConstVec3Map p0(&(x_begin + i)[0]);
+//            ConstVec3Map p1(&(x_begin + fan[0].first)[0]);
+//            ConstVec3Map p2(&(x_begin + fan[1].first)[0]);
             // TODO: Orient normal.
-            Vec3 n = (p1 - p0).cross(p2 - p0).normalized();
-//            if ()
+//            Vec3 n = (p1 - p0).cross(p2 - p0).normalized();
+//            Value d = -n.dot(p0);
+            Vec4 plane = plane_from_points(ConstVec3Map(&(x_begin + i)[0]),
+                                           ConstVec3Map(&(x_begin + fan[0].first)[0]),
+                                           ConstVec3Map(&(x_begin + fan[1].first)[0]));
+
+            // Make sure positive distance is towards sensor at [0, 0, 0],
+            // i.e., outside from surface.
+//            if (d < 0.)
 //            {
-//                n *= Value(-1.);
+//                n = -n;
+//                d = -d;
 //            }
+            if (plane(3) < 0.)
+            {
+                plane = -plane;
+            }
+//            Value signed_dist = n.dot(p) + d;
+            Value signed_dist = plane.dot(e2p(p));
+            Value eps = points_min_dist_ / Value(2.);
+            if (signed_dist > eps)
+            {
+                // New point above surface.
+                ++n_above;
+            }
+            else if (signed_dist >= -eps)
+            {
+                // Known surface measured again.
+                if (cloud_[i].num_occupied_ == std::numeric_limits<decltype(cloud_[i].num_occupied_)>::max())
+                {
+                    cloud_[i].num_occupied_ /= 2;
+                    cloud_[i].num_empty_ /= 2;
+                }
+                ++cloud_[i].num_occupied_;
+                ++n_occupied;
+            }
+            else
+            {
+                // Known surface seen through,
+                // indicating it may be noise or it moved somewhere else.
+                if (cloud_[i].num_empty_ == std::numeric_limits<decltype(cloud_[i].num_empty_)>::max())
+                {
+                    cloud_[i].num_occupied_ /= 2;
+                    cloud_[i].num_empty_ /= 2;
+                }
+                ++cloud_[i].num_empty_;
+                ++n_empty;
+            }
+            // TODO: Change point status and add to dirty indices if needed.
+            if (point_empty(cloud_[i]))
+            {
+                if (cloud_[i].flags_ & STATIC)
+                {
+                    cloud_[i].flags_ &= ~STATIC;
+                    dirty_indices_.insert(i);
+                    ++n_modified;
+                }
+            }
+            else
+            {
+                if (!(cloud_[i].flags_ & STATIC))
+                {
+                    cloud_[i].flags_ |= STATIC;
+                    dirty_indices_.insert(i);
+                    ++n_modified;
+                }
+            }
         }
+        ROS_INFO("Occupancy of %lu points updated, %lu modified state, %lu above, %lu occupied, %lu empty (%.6f s).",
+                 q_map.nn_[0].size(), size_t(n_modified), size_t(n_above), size_t(n_occupied), size_t(n_empty),
+                 t_part.seconds_elapsed());
         ROS_INFO("Occupancy updated (%.3f s).", t.seconds_elapsed());
     }
 
@@ -884,7 +969,8 @@ public:
                     continue;
                 }
                 const Elem line_dist = (x_new - x_origin).cross(x_origin - x_map).norm() / d_new;
-                if (line_dist / 2. > points_min_dist_)
+//                if (line_dist / 2. > points_min_dist_)
+                if (line_dist > points_min_dist_ / 2)
                 {
                     continue;
                 }
@@ -908,13 +994,23 @@ public:
 //                ROS_INFO("Point [%.1f, %.1f, %.1f]: %u occupied, %u empty.",
 //                        x_map.x(), x_map.y(), x_map.z(), occupied_buf_[v_map], empty_buf_[v_map]);
 //                if (empty_buf_[v_map] / occupied_buf_[v_map] >= 4)
-            if (float(cloud_[v_map].num_empty_) / cloud_[v_map].num_occupied_ >= empty_ratio_) {
-                // TODO: Remove point?
-                // Handle this in processing NN.
-            }
-            if (point_empty(v_map))
+//            if (float(cloud_[v_map].num_empty_) / cloud_[v_map].num_occupied_ >= empty_ratio_) {
+//                // TODO: Remove point?
+//                // Handle this in processing NN.
+//            }
+            if (point_empty(cloud_[v_map]))
             {
-                cloud_[v_map].flags_ &= ~STATIC;
+                if (cloud_[v_map].flags_ & STATIC)
+                {
+                    cloud_[v_map].flags_ &= ~STATIC;
+                }
+            }
+            else
+            {
+                if (!(cloud_[v_map].flags_ & STATIC))
+                {
+                    cloud_[v_map].flags_ |= STATIC;
+                }
             }
         }
         ROS_DEBUG("Checking and updating %u static/dynamic points nearby: %.3f s.",
@@ -958,7 +1054,8 @@ public:
 //        void merge(flann::Matrix<Elem> points, flann::Matrix<Elem> origin)
     void merge(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
     {
-        Lock lock(cloud_mutex_);
+        Lock index_lock(index_mutex_);
+        Lock cloud_lock(cloud_mutex_);
         Timer t;
         ROS_DEBUG("Merging cloud started. Capacity %lu points.", capacity());
         // TODO: Forbid allocation while in use or lock?
@@ -977,7 +1074,7 @@ public:
 //        update_occupancy_unorganized(points, origin);
 
         // Find NN distance within current map.
-        Lock index_lock(index_mutex_);
+//        Lock index_lock(index_mutex_);
         Query<Elem> q(*index_, points, Neighborhood::K_NEIGHBORS, neighborhood_radius_);
         ROS_INFO("Got neighbors for %lu points (%.3f s).",
                   points.rows,
@@ -1170,27 +1267,34 @@ public:
 
     size_t capacity() const
     {
+        Lock cloud_lock(cloud_mutex_);
         return cloud_.capacity();
     }
 
     size_t size() const
     {
         // TODO: Lock? Make thread safe?
+        Lock cloud_lock(cloud_mutex_);
         return cloud_.size();
     }
 
     bool empty() const
     {
+        Lock cloud_lock(cloud_mutex_);
         return cloud_.empty();
     }
 
-    Mutex cloud_mutex_;
-    std::vector<Point> cloud_;
-    std::vector<Neighborhood> graph_;
-    Mutex index_mutex_;
+    // Lock mutexes in this sequence if multiple are needed:
+    // index_mutex_, cloud_mutex_, dirty_mutex_.
+
+    mutable Mutex index_mutex_;
     std::shared_ptr<flann::Index<flann::L2_3D<Value>>> index_;
 
-    Mutex dirty_mutex_;
+    mutable Mutex cloud_mutex_;
+    std::vector<Point> cloud_;
+    std::vector<Neighborhood> graph_;
+
+    mutable Mutex dirty_mutex_;
 //    std::set<Index> dirty_indices_;
     std::unordered_set<Index> dirty_indices_;
 
@@ -1198,7 +1302,8 @@ public:
     float points_min_dist_;
     // Occupancy
     float min_empty_cos_;
-    float empty_ratio_;
+    int min_num_empty_;
+    float min_empty_ratio_;
     // Graph
     float neighborhood_radius_;
 //    float traversable_radius_;

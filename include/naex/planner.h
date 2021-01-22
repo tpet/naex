@@ -60,7 +60,7 @@ namespace naex
                 max_cloud_age_(5.0),
 //                max_pitch_(static_cast<float>(30. / 180. * M_PI)),
 //                max_roll_(static_cast<float>(30. / 180. * M_PI)),
-                empty_ratio_(2),
+//                empty_ratio_(2),
                 filter_robots_(false),
                 neighborhood_knn_(12),
                 neighborhood_radius_(.5),
@@ -156,7 +156,10 @@ namespace naex
             pnh_.param("input_queue_size", queue_size_, queue_size_);
             pnh_.param("points_min_dist", map_.points_min_dist_, map_.points_min_dist_);
             pnh_.param("min_empty_cos", map_.min_empty_cos_, map_.min_empty_cos_);
-            pnh_.param("empty_ratio", empty_ratio_, empty_ratio_);
+
+            pnh_.param("min_num_empty", map_.min_num_empty_, map_.min_num_empty_);
+            pnh_.param("min_empty_ratio", map_.min_empty_ratio_, map_.min_empty_ratio_);
+
             pnh_.param("filter_robots", filter_robots_, filter_robots_);
 
             bool among_robots = false;
@@ -250,15 +253,34 @@ namespace naex
                     // actors to account for transmission time of shared
                     // localization.
                     const auto time = (frame == robot_frame_)
-                            ? event.current_expected - ros::Duration(1.)
-                            : event.current_expected - ros::Duration(2.);
-                    auto tf = tf_->lookupTransform(map_frame_, frame, time, ros::Duration(0.));
+                            ? ros::Time(std::max(event.current_expected.toSec() - 1., 0.))
+                            : ros::Time(std::max(event.current_expected.toSec() - 2., 0.));
+                    const auto tf = tf_->lookupTransform(map_frame_, frame, time, ros::Duration(0.));
+
                     Vec3 pos(Value(tf.transform.translation.x),
                              Value(tf.transform.translation.y),
                              Value(tf.transform.translation.z));
 
-                    Lock cloud_lock(map_.cloud_mutex_);
+                    if (frame == robot_frame_)
+                    {
+                        viewpoints_.push_back(pos(0));
+                        viewpoints_.push_back(pos(1));
+                        viewpoints_.push_back(pos(2));
+                    }
+                    else
+                    {
+                        other_viewpoints_.push_back(pos(0));
+                        other_viewpoints_.push_back(pos(1));
+                        other_viewpoints_.push_back(pos(2));
+                    }
+
+                    if (map_.empty())
+                    {
+                        continue;
+                    }
                     Lock index_lock(map_.index_mutex_);
+                    Lock cloud_lock(map_.cloud_mutex_);
+
                     RadiusQuery<Value> q(*map_.index_, FMat(pos.data(), 1, 3), max_vp_distance_);
                     assert(q.nn_.size() == 1);
                     assert(q.dist_.size() == 1);
@@ -285,18 +307,6 @@ namespace naex
                                                                     : d);
                             map_.cloud_[v].other_actors_last_visit_ = t;
                         }
-                    }
-                    if (frame == robot_frame_)
-                    {
-                        viewpoints_.push_back(Value(tf.transform.translation.x));
-                        viewpoints_.push_back(Value(tf.transform.translation.y));
-                        viewpoints_.push_back(Value(tf.transform.translation.z));
-                    }
-                    else
-                    {
-                        other_viewpoints_.push_back(Value(tf.transform.translation.x));
-                        other_viewpoints_.push_back(Value(tf.transform.translation.y));
-                        other_viewpoints_.push_back(Value(tf.transform.translation.z));
                     }
                 }
                 catch (const tf2::TransformException& ex)
@@ -552,8 +562,9 @@ namespace naex
                 }
             }
 
-        Lock cloud_lock(map_.cloud_mutex_);
         Lock index_lock(map_.index_mutex_);
+        Lock cloud_lock(map_.cloud_mutex_);
+
         t.reset();
 
             const size_t min_map_points = Neighborhood::K_NEIGHBORS;
@@ -994,6 +1005,11 @@ namespace naex
 
         }
 
+//        void clear_cloud(const sensor_msgs::PointCloud2& cloud)
+//        {
+//
+//        }
+
         void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
         {
 //            {
@@ -1005,9 +1021,17 @@ namespace naex
 //                }
 //            }
             check_initialized();
+//            auto step = std::make_shared<sensor_msgs::PointCloud2>();
+//            sensor_msgs::PointCloud2 step;
+//            step_subsample(*input, 1024, 1024, step);
+//
+//            auto cloud = std::make_shared<sensor_msgs::PointCloud2>();
+//            voxel_filter(step, map_.points_min_dist_, *cloud);
+
             const Index n_pts = cloud->height * cloud->width;
             ROS_DEBUG("Input cloud from %s with %u points received.",
                       cloud->header.frame_id.c_str(), n_pts);
+
             Timer t;
             double timeout_ = 5.;
             ros::Duration timeout(std::max(timeout_ - (ros::Time::now() - cloud->header.stamp).toSec(), 0.));
@@ -1024,15 +1048,15 @@ namespace naex
             }
             ROS_DEBUG("Had to wait %.3f s for input cloud transform.", t.seconds_elapsed());
 
-            Quat rotation(tf.transform.rotation.w,
-                    tf.transform.rotation.x,
-                    tf.transform.rotation.y,
-                    tf.transform.rotation.z);
-            Eigen::Translation3f translation(tf.transform.translation.x,
-                    tf.transform.translation.y,
-                    tf.transform.translation.z);
+//            Quat rotation(tf.transform.rotation.w,
+//                    tf.transform.rotation.x,
+//                    tf.transform.rotation.y,
+//                    tf.transform.rotation.z);
+//            Eigen::Translation3f translation(tf.transform.translation.x,
+//                    tf.transform.translation.y,
+//                    tf.transform.translation.z);
 //            Eigen::Affine3f transform = translation * rotation;
-            Eigen::Isometry3f transform = translation * rotation;
+            Eigen::Isometry3f transform(tf2::transformToEigen(tf.transform));
 
             // TODO: Update map occupancy based on reconstructed surface of 2D cloud.
 
@@ -1054,7 +1078,8 @@ namespace naex
             for (Index i = 0; i < n_pts; ++i, ++it_points)
             {
                 ConstVec3Map src(&it_points[0]);
-                if (src.norm() < 1.f || src.norm() > 25.f)
+                Value range = src.norm();
+                if (range < 1.f || range > 25.f)
                 {
                     continue;
                 }
@@ -1064,18 +1089,23 @@ namespace naex
                 {
                     if ((src - ConstVec3Map(&robots[i])).norm() < 1.f)
                     {
-                        remove = true;
-                        break;
+//                        remove = true;
+//                        break;
+                        goto next_point;
                     }
                 }
-                if (remove)
+//                if (remove)
+//                {
+//                    continue;
+//                }
                 {
-                    continue;
+                    Vec3Map dst(it_points_dst);
+                    dst = transform * src;
+                    it_points_dst += 3;
+                    ++n_added;
                 }
-                Vec3Map dst(it_points_dst);
-                dst = transform * src;
-                it_points_dst += 3;
-                ++n_added;
+                next_point:
+                continue;
             }
             Index min_pts = 16;
             if (n_added < min_pts)
@@ -1087,8 +1117,19 @@ namespace naex
                       size_t(n_added), size_t(n_pts));
             flann::Matrix<Elem> points(points_buf.begin(), n_added, 3);
 
-            Lock cloud_lock(map_.cloud_mutex_);
             Lock index_lock(map_.index_mutex_);
+            Lock cloud_lock(map_.cloud_mutex_);
+
+//            if (step.height > 1)
+//            {
+//                map_.update_occupancy_organized(*cloud, tf.transform);
+//                map_.update_occupancy_organized(step, tf.transform);
+//            }
+//            else
+//            {
+//                ROS_WARN("Unstructured cloud received.");
+//                map_.update_occupancy_unorganized(points, origin_mat);
+//            }
 
             {
                 Lock lock_dirty(map_.dirty_mutex_);
@@ -1177,7 +1218,7 @@ namespace naex
         float max_cloud_age_;
 //        float max_pitch_;
 //        float max_roll_;
-        int empty_ratio_;
+//        int empty_ratio_;
         bool filter_robots_;
 
         int neighborhood_knn_;

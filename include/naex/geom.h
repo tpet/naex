@@ -42,6 +42,33 @@ Value inline inclination(const Vec3& x)
 //    return Value(M_PI_2) - angle_from_up_normalized(x);
 }
 
+/**
+ * Plane from three points (in non-degenerate configuration).
+ * @tparam Derived
+ * @param p0
+ * @param p1
+ * @param p2
+ * @return
+ */
+//template<typename T>
+//Vec4 plane_from_points(T& p0, T& p1, T& p2)
+template <typename Derived>
+Vec4 plane_from_points(const Eigen::MatrixBase<Derived>& p0,
+                       const Eigen::MatrixBase<Derived>& p1,
+                       const Eigen::MatrixBase<Derived>& p2)
+{
+    Vec3 n = (p1 - p0).cross(p2 - p0).normalized();
+    Value d = -n.dot(p0);
+//    return Vec4(n, d);
+    return Vec4(n(0), n(1), n(2), d);
+}
+
+Vec4 e2p(Vec3& v)
+{
+//    return Vec4(v, 1.);
+    return Vec4(v(0), v(1), v(2), 1.);
+}
+
 }  // namespace naex
 
 #endif  // NAEX_GEOM_H
