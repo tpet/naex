@@ -370,7 +370,7 @@ public:
     inline std::pair<EdgeIter, EdgeIter> out_edges(const Vertex& u) const
     {
         // TODO: Limit to valid edges here or just by costs?
-//        return { u * num_edges(), (u + 1) * num_edges() };
+        // Skip the first neighbor - the vertex itself.
         return { u * Neighborhood::K_NEIGHBORS + 1, (u + 1) * Neighborhood::K_NEIGHBORS };
     }
     inline Edge out_degree(const Vertex& u) const
@@ -391,8 +391,6 @@ public:
     }
     inline Vertex target(const Edge& e) const
     {
-//        return nn_[source(e)][target_index(e)];
-//        return cloud_[source(e)].neighbors_[target_index(e)];
         return graph_[source(e)].neighbors_[target_index(e)];
     }
 
@@ -1305,6 +1303,7 @@ public:
     int min_num_empty_;
     float min_empty_ratio_;
     // Graph
+//    int neighbor
     float neighborhood_radius_;
 //    float traversable_radius_;
     // Traversability
@@ -1338,44 +1337,32 @@ public:
     inline Edge num_edges() const
     {
         // TODO: Compute true number based on valid neighbors.
-//        return num_vertices() * Point::K_NEIGHBORS;
         return map_.num_edges();
     }
     inline std::pair<VertexIter, VertexIter> vertices() const
     {
-//        return { 0, num_vertices() };
         return map_.vertices();
     }
     inline std::pair<EdgeIter, EdgeIter> out_edges(const Vertex& u) const
     {
         // TODO: Limit to valid edges here or just by costs?
-//        return { u * num_edges(), (u + 1) * num_edges() };
-//        return { u * Point::K_NEIGHBORS, (u + 1) * Point::K_NEIGHBORS };
         return map_.out_edges(u);
     }
     inline Edge out_degree(const Vertex& u) const
     {
         // TODO: Compute true number based on valid neighbors.
-//        return num_edges();
-//        return Point::K_NEIGHBORS;
         return map_.out_degree(u);
     }
     inline Vertex source(const Edge& e) const
     {
-//        return e / num_edges();
-//        return e / Point::K_NEIGHBORS;
         return map_.source(e);
     }
     inline Vertex target_index(const Edge& e) const
     {
-//        return e % num_edges();
-//        return e % Point::K_NEIGHBORS;
         return map_.target_index(e);
     }
     inline Vertex target(const Edge& e) const
     {
-//        return nn_[source(e)][target_index(e)];
-//        return map_.cloud_[source(e)].neighbors_[target_index(e)];
         return map_.target(e);
     }
     const Map& map_;
