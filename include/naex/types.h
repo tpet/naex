@@ -97,6 +97,7 @@ enum Flags
 //    }
 //typedef Buffer<uint8_t> Labels;
 
+const Index INVALID_INDEX = std::numeric_limits<Index>::max();
 const Vertex INVALID_VERTEX = std::numeric_limits<Vertex>::max();
 
 class Point

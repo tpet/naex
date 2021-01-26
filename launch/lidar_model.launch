@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <node name="points_throttle" pkg="topic_tools" type="throttle"
+          args="messages X1/points 1.0 X1/points_slow"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+    <!--
+    launch-prefix="valgrind"
+    -->
+    <node name="lidar_model" pkg="naex" type="lidar_model"
+          respawn="true" respawn_delay="1.0" output="screen">
+        <param name="check_model" value="false"/>
+        <remap from="cloud" to="X1/points_slow"/>
+    </node>
+</launch>

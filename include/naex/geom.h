@@ -21,6 +21,49 @@
 namespace naex
 {
 
+
+template<typename T>
+T radians(const T& x)
+{
+    return x / T(180) * T(M_PI);
+}
+
+template<typename T>
+T degrees(const T& x)
+{
+    return x / T(M_PI) * T(180);
+}
+
+template<typename T>
+inline T azimuth(const T x, const T y)
+{
+    return std::atan2(y, x);
+}
+
+template<typename T>
+inline T elevation(const T x, const T y, const T z)
+{
+    return std::atan2(z, std::hypot(x, y));
+}
+
+template<typename T>
+inline void cartesian_to_spherical(const T& x, const T& y, const T& z,
+                                   T& azimuth, T& elevation, T& radius)
+{
+    azimuth = std::atan2(y, x);
+    elevation = std::atan2(z, std::hypot(x, y));
+    radius = std::hypot(std::hypot(x, y), z);
+}
+
+template<typename T>
+inline void spherical_to_cartesian(const T& azimuth, const T& elevation, const T& radius,
+                                   T& x, T& y, T& z)
+{
+    x = radius * std::cos(elevation) * std::cos(azimuth);
+    y = radius * std::cos(elevation) * std::sin(azimuth);
+    z = radius * std::sin(elevation);
+}
+
 /**
  * Angle from z vector [0, 0, 1].
  * @param x Unit vector.

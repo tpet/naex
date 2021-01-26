@@ -2,6 +2,8 @@
 #ifndef NAEX_ITERATORS_H
 #define NAEX_ITERATORS_H
 
+#include <naex/types.h>
+
 namespace naex
 {
 template<typename It>

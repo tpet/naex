@@ -45,6 +45,9 @@ catkin_package(
 #add_executable(follower src/follower_node.cpp)
 #target_link_libraries(follower ${catkin_LIBRARIES})
 
+add_executable(lidar_model src/lidar_model.cpp)
+target_link_libraries(lidar_model ${catkin_LIBRARIES} ${eigen_LIBRARIES} ${lz4_LIBRARIES} OpenMP::OpenMP_CXX)
+
 # https://stackoverflow.com/a/51448364/3456661
 add_executable(planner src/planner_node.cpp)
 target_link_libraries(planner ${catkin_LIBRARIES} ${eigen_LIBRARIES} ${flann_LIBRARIES} ${lz4_LIBRARIES} OpenMP::OpenMP_CXX)
