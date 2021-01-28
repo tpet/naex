@@ -10,7 +10,7 @@
     <buildtool_depend>catkin</buildtool_depend>
     <depend>geometry_msgs</depend>
     <depend>libflann-dev</depend>
-    <depend>liblz4-dev</depend>
+    <depend>lz4</depend>
     <depend>message_runtime</depend>
     <depend>nav_msgs</depend>
     <depend>roscpp</depend>
