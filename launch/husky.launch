@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="cloud" default="os/points"/>
+    <arg name="cloud" default="scan_filtered"/>
     <arg name="points_min_dist" default="0.125"/>
-    <arg name="cmd_vel" default="nav/cmd_vel"
+    <arg name="cmd_vel" default="cmd_vel"
          doc="Name of the topic on which the planner publishes the velocity commands"/>
 
     <node name="os_points_throttle" pkg="topic_tools" type="throttle"
@@ -16,6 +16,41 @@
         </rosparam>
         <remap from="~input" to="$(arg cloud)_slow"/>
         <remap from="~output" to="$(arg cloud)_slow_filtered"/>
+    </node>
+
+    <node name="dynamic_mapper" type="dynamic_mapper" pkg="ethzasl_icp_mapper" output="log">
+        <param name="subscribe_scan" value="false"/>
+        <param name="inputFiltersConfig" value="$(subt_virtual)/launch/dynamic_mapper/input_filters.yaml"/>
+        <param if="$(eval icp == 'point_to_plane')"
+               name="icpConfig" value="$(subt_virtual)/launch/dynamic_mapper/icp.yaml"/>
+        <param if="$(eval icp == 'point_to_plane_4dof')"
+               name="icpConfig" value="$(subt_virtual)/launch/dynamic_mapper/icp_4dof.yaml"/>
+        <param name="mapPostFiltersConfig" value="$(subt_virtual)/launch/dynamic_mapper/map_post_filters.yaml"/>
+
+        <param name="odom_frame" value="odom"/>
+        <param name="map_frame" value="map"/>
+        <param name="useROSLogger" value="true"/>
+        <param name="minOverlap" value="0.2" />
+        <param name="maxOverlapToMerge" value="1.0"/>
+        <param name="minReadingPointCount" value="500"/>
+        <param name="minMapPointCount" value="500"/>
+        <param name="localizing" value="true"/>
+        <param name="mapping" value="true"/>
+        <!-- Disable refreshing map-to-odom transform. -->
+        <param name="tfRefreshPeriod" value="0."/>
+        <!-- Parameters for dynamic elements -->
+        <param name="priorStatic" value="0.7"/>
+        <param name="priorDyn" value="0.3"/>
+        <param name="maxAngle" value="0.02"/>
+        <param name="eps_a" value="0.1"/>  <!--1 deg = 0.017rad-->
+        <param name="eps_d" value="0.1"/>
+        <param name="alpha" value="0.99"/>
+        <param name="beta" value="0.9"/>
+        <param name="maxDyn" value="0.50"/>
+        <param name="maxDistNewPoint" value="$(arg points_min_dist)"/>  <!-- 0.07 -->
+        <param name="sensorMaxRange" value="50.0"/>
+
+        <remap from="cloud_in" to="$(arg cloud)_slow_filtered"/>
     </node>
 
     <node name="naex_planner" pkg="naex" type="planner"
