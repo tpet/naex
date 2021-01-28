@@ -678,17 +678,7 @@ public:
             return;
         }
 
-
         // TODO: Improve efficiency with camera model and cloud structure.
-
-//        Quat rotation(Value(cloud_to_map_tf.rotation.w),
-//                      Value(cloud_to_map_tf.rotation.x),
-//                      Value(cloud_to_map_tf.rotation.y),
-//                      Value(cloud_to_map_tf.rotation.z));
-//        Eigen::Translation3f translation(Value(cloud_to_map_tf.translation.x),
-//                                         Value(cloud_to_map_tf.translation.y),
-//                                         Value(cloud_to_map_tf.translation.z));
-//        Eigen::Isometry3f cloud_to_map = translation * rotation;
         Eigen::Isometry3f cloud_to_map(tf2::transformToEigen(cloud_to_map_tf));
         Eigen::Isometry3f map_to_cloud = cloud_to_map.inverse(Eigen::Isometry);
 
@@ -860,6 +850,186 @@ public:
         }
         ROS_INFO("Occupancy of %lu points updated, %lu modified state, %lu above, %lu occupied, %lu empty (%.6f s).",
                  q_map.nn_[0].size(), size_t(n_modified), size_t(n_above), size_t(n_occupied), size_t(n_empty),
+                 t_part.seconds_elapsed());
+        ROS_INFO("Occupancy updated (%.3f s).", t.seconds_elapsed());
+    }
+
+    void update_occupancy_projection(const sensor_msgs::PointCloud2& cloud,
+                                     const geometry_msgs::Transform& cloud_to_map_tf)
+    {
+        Timer t;
+        Timer t_part;
+
+        if (empty())
+        {
+            ROS_INFO("No map points for updating occupancy.");
+            return;
+        }
+
+        assert(cloud.height > 1);
+        size_t n_pts = cloud.height * cloud.width;
+        if (n_pts == 0)
+        {
+            ROS_INFO("No input points for updating occupancy.");
+            return;
+        }
+
+        t_part.reset();
+        SphericalProjection model;
+        if (!model.fit(cloud))
+        {
+            ROS_WARN("Could not fit cloud model (%.6f s).", t_part.seconds_elapsed());
+            return;
+        }
+        ROS_INFO("Got cloud model (%.6f s).", t_part.seconds_elapsed());
+
+        sensor_msgs::PointCloud2ConstIterator<float> x_begin(cloud, "x");
+        Eigen::Isometry3f cloud_to_map(tf2::transformToEigen(cloud_to_map_tf));
+        Eigen::Isometry3f map_to_cloud = cloud_to_map.inverse(Eigen::Isometry);
+
+        // Find closest map points to sensor origin.
+        Lock index_lock(index_mutex_);
+        Lock cloud_lock(cloud_mutex_);
+        Lock dirty_lock(dirty_mutex_);
+        t_part.reset();
+        Vec3 origin = cloud_to_map.translation();
+        RadiusQuery<Value> q_map(*index_, FlannMat(origin.data(), 1, 3), 10.f);
+        ROS_INFO("%lu closest map points found (%.6f s).", q_map.nn_[0].size(), t_part.seconds_elapsed());
+
+        // Test each map point nearby, whether we can see through.
+        Index n_occupied = 0;
+        Index n_empty = 0;
+        Index n_occluded = 0;
+        Index n_modified = 0;
+        const Value eps = points_min_dist_ / Value(2);
+        for (const auto i: q_map.nn_[0])
+        {
+            Vec3 p = map_to_cloud * ConstVec3Map(cloud_[i].position_);
+            Value r, c;
+            model.project(p(0), p(1), p(2), r, c);
+
+            if (r < 1 || r > cloud.height - 2)
+                continue;
+            int r0 = int(std::round(r));
+
+            if (c < 1 || c > cloud.width - 2)
+                continue;
+            int c0 = int(std::round(c));
+
+            Index i0 = r0 * cloud.width + c0;
+
+            Value rint;
+            Index i1 = std::modf(r, &rint) >= Value(0)
+                       ? (r0 + 1) * cloud.width + c0
+                       : (r0 - 1) * cloud.width + c0;
+
+            Value cint;
+            Index i2 = std::modf(c, &cint) >= Value(0)
+                       ? r0 * cloud.width + c0 + 1
+                       : r0 * cloud.width + c0 - 1;
+
+            Vec4 plane = plane_from_points(ConstVec3Map(&(x_begin + i0)[0]),
+                                           ConstVec3Map(&(x_begin + i1)[0]),
+                                           ConstVec3Map(&(x_begin + i2)[0]));
+
+            // Make sure positive distance is towards sensor at [0, 0, 0],
+            // i.e., outside from surface.
+            if (plane(3) < 0.)
+            {
+//                plane = -plane;
+                plane *= -1;
+            }
+
+            Value signed_dist = plane.dot(e2p(p));
+            cloud_[i].dist_to_plane_ = signed_dist;
+
+            if (signed_dist < -eps)
+            {
+                // Map point is occluded. Do nothing.
+                ++n_occluded;
+                continue;
+            }
+
+            if (signed_dist < eps)
+            {
+                // Known surface measured again.
+                // TODO: Param max occupancy sample size.
+//                if (cloud_[i].num_occupied_ == std::numeric_limits<decltype(cloud_[i].num_occupied_)>::max())
+                if (cloud_[i].num_occupied_ == 15)
+                {
+                    cloud_[i].num_occupied_ /= 2;
+                    cloud_[i].num_empty_ /= 2;
+                }
+                ++cloud_[i].num_occupied_;
+                ++n_occupied;
+            }
+            else
+            {
+                // Known surface seen through,
+                // indicating it may be noise or it moved somewhere else.
+//                if (cloud_[i].num_empty_ == std::numeric_limits<decltype(cloud_[i].num_empty_)>::max())
+                if (cloud_[i].num_empty_ == 15)
+                {
+                    cloud_[i].num_occupied_ /= 2;
+                    cloud_[i].num_empty_ /= 2;
+                }
+                ++cloud_[i].num_empty_;
+                ++n_empty;
+            }
+
+            // TODO: Change point status and add to dirty indices if needed.
+            if (point_empty(cloud_[i]))
+            {
+                if (cloud_[i].flags_ & STATIC)
+                {
+                    cloud_[i].flags_ &= ~STATIC;
+                    // Change position to NaN to remove it from visualization.
+                    cloud_[i].position_[0] = std::numeric_limits<Value>::quiet_NaN();
+                    cloud_[i].position_[1] = std::numeric_limits<Value>::quiet_NaN();
+                    cloud_[i].position_[2] = std::numeric_limits<Value>::quiet_NaN();
+                    // Don't update the point we remove.
+                    dirty_indices_.erase(i);
+                    // TODO: Add neighborhood to dirty.
+                    for (const auto j: graph_[i].neighbors_)
+                    {
+                        // Don't add removed points.
+                        if (!std::isfinite(cloud_[j].position_[0]))
+                        {
+                            continue;
+                        }
+                        dirty_indices_.insert(j);
+                    }
+                    index_->removePoint(i);
+                    ++n_modified;
+                }
+            }
+            else
+            {
+                if (!(cloud_[i].flags_ & STATIC))
+                {
+                    // Don't resurrect removed points.
+                    if (!std::isfinite(cloud_[i].position_[0]))
+                    {
+                        continue;
+                    }
+                    cloud_[i].flags_ |= STATIC;
+                    dirty_indices_.insert(i);
+                    // TODO: Add neighborhood to dirty.
+                    for (const auto j: graph_[i].neighbors_)
+                    {
+                        // Don't add removed points.
+                        if (!std::isfinite(cloud_[j].position_[0]))
+                        {
+                            continue;
+                        }
+                        dirty_indices_.insert(j);
+                    }
+                    ++n_modified;
+                }
+            }
+        }
+        ROS_INFO("Occupancy of %lu points updated, %lu modified state, %lu occluded, %lu occupied, %lu empty (%.6f s).",
+                 q_map.nn_[0].size(), size_t(n_modified), size_t(n_occluded), size_t(n_occupied), size_t(n_empty),
                  t_part.seconds_elapsed());
         ROS_INFO("Occupancy updated (%.3f s).", t.seconds_elapsed());
     }
@@ -1197,6 +1367,9 @@ public:
 
         cloud.point_step = uint32_t(offsetof(Point, num_occupied_));
         append_field<decltype(Point().num_occupied_)>("num_occupied", 1, cloud);
+
+        cloud.point_step = uint32_t(offsetof(Point, dist_to_plane_));
+        append_field<decltype(Point().dist_to_plane_)>("dist_to_plane", 1, cloud);
 
         cloud.point_step = uint32_t(offsetof(Point, num_obstacle_pts_));
         append_field<decltype(Point().num_obstacle_pts_)>("num_obstacle_pts", 1, cloud);

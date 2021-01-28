@@ -55,14 +55,15 @@ target_link_libraries(planner ${catkin_LIBRARIES} ${eigen_LIBRARIES} ${flann_LIB
 #target_link_libraries(planner ${catkin_LIBRARIES} ${Flann_LIBRARY} lz4 OpenMP::OpenMP_CXX)
 
 add_executable(incremental_flann_index src/incremental_flann_index.cpp)
-target_link_libraries(incremental_flann_index ${eigen_LIBRARIES} ${Flann_LIBRARY} lz4 OpenMP::OpenMP_CXX)
+target_link_libraries(incremental_flann_index ${eigen_LIBRARIES} ${Flann_LIBRARY} ${lz4_LIBRARIES} OpenMP::OpenMP_CXX)
 
 add_executable(integral_radius_search src/integral_radius_search.cpp)
-target_link_libraries(integral_radius_search ${eigen_LIBRARIES} ${Flann_LIBRARY}  ${lz4_LIBRARIES} OpenMP::OpenMP_CXX)
+target_link_libraries(integral_radius_search ${eigen_LIBRARIES} ${Flann_LIBRARY} ${lz4_LIBRARIES} OpenMP::OpenMP_CXX)
+
+#add_executable(func_cast_ambiguity src/func_cast_ambiguity.cpp)
 
 install(
     TARGETS
-#        follower
         planner
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

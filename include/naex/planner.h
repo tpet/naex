@@ -884,15 +884,15 @@ public:
 //
 //        }
 
-    void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
+//    void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
+    void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& input)
     {
         check_initialized();
-//            auto step = std::make_shared<sensor_msgs::PointCloud2>();
-//            sensor_msgs::PointCloud2 step;
-//            step_subsample(*input, 1024, 1024, step);
+        sensor_msgs::PointCloud2 step_filtered;
+        step_subsample(*input, 1024, 1024, step_filtered);
 //
-//            auto cloud = std::make_shared<sensor_msgs::PointCloud2>();
-//            voxel_filter(step, map_.points_min_dist_, *cloud);
+        auto cloud = std::make_shared<sensor_msgs::PointCloud2>();
+        voxel_filter(step_filtered, map_.points_min_dist_, *cloud);
 
         const Index n_pts = cloud->height * cloud->width;
         ROS_DEBUG("Input cloud from %s with %u points received.",
@@ -901,10 +901,10 @@ public:
         Timer t;
         double timeout_ = 5.;
         ros::Duration timeout(std::max(timeout_ - (ros::Time::now() - cloud->header.stamp).toSec(), 0.));
-        geometry_msgs::TransformStamped tf;
+        geometry_msgs::TransformStamped cloud_to_map;
         try
         {
-            tf = tf_->lookupTransform(map_frame_, cloud->header.frame_id, cloud->header.stamp, timeout);
+            cloud_to_map = tf_->lookupTransform(map_frame_, cloud->header.frame_id, cloud->header.stamp, timeout);
         }
         catch (const tf2::TransformException& ex)
         {
@@ -914,9 +914,18 @@ public:
         }
         ROS_DEBUG("Had to wait %.3f s for input cloud transform.", t.seconds_elapsed());
 
-        Eigen::Isometry3f transform(tf2::transformToEigen(tf.transform));
+        Eigen::Isometry3f transform(tf2::transformToEigen(cloud_to_map.transform));
 
         // TODO: Update map occupancy based on reconstructed surface of 2D cloud.
+        if (step_filtered.height > 1 && step_filtered.width > 1)
+        {
+            map_.update_occupancy_projection(step_filtered, cloud_to_map.transform);
+        }
+        else
+        {
+            ROS_WARN("Cannot update occupancy using unstructured point cloud.");
+        }
+
         std::vector<Elem> robots;
         if (filter_robots_)
         {
@@ -940,7 +949,6 @@ public:
                 continue;
             }
             // Filter robots.
-            bool remove = false;
             for (Index i = 0; i + 2 < robots.size(); i += 3)
             {
                 if ((src - ConstVec3Map(&robots[i])).norm() < 1.f)
@@ -954,7 +962,7 @@ public:
                 it_points_dst += 3;
                 ++n_added;
             }
-        next_point:
+            next_point:
             continue;
         }
         Index min_pts = 16;

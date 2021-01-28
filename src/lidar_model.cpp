@@ -41,6 +41,7 @@ public:
                  degrees(model_.azimuth_start_ + (model_.width_ - 1) * model_.azimuth_step_),
                  degrees(model_.azimuth_step_),
                  t.seconds_elapsed());
+        model_.print_model_summary();
         if (check_model_)
         {
             model_.check(*msg);

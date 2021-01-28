@@ -158,6 +158,7 @@ public:
     // Number of occurences of empty/occupied state.
     uint8_t num_empty_;
     uint8_t num_occupied_;
+    Value dist_to_plane_;
     // Number of obstacles nearby.
     uint8_t num_obstacle_pts_;
     // Edge flag.
