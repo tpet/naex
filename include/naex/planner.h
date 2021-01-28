@@ -21,7 +21,6 @@
 #include <naex/iterators.h>
 #include <naex/map.h>
 #include <naex/nearest_neighbors.h>
-#include <naex/params.h>
 #include <naex/timer.h>
 #include <naex/transforms.h>
 #include <naex/types.h>
