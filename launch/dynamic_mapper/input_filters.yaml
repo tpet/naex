@@ -1,0 +1,35 @@
+#- RemoveNaNDataPointsFilter:
+
+#- VoxelGridDataPointsFilter:
+#    vSizeX: 0.05
+#    vSizeY: 0.05
+#    vSizeZ: 0.05
+#    # If 1 (true), down-sample by using centroid of voxel cell.  If false (0), use center of voxel cell.
+#    useCentroid: 1
+#    # whether the filter keep the existing point descriptors and average them or should it drop them
+#    averageExistingDescriptors: 0
+
+- SurfaceNormalDataPointsFilter:
+    knn: 12
+    epsilon: 1.33
+    keepNormals: 1
+    keepDensities: 1
+    keepEigenValues: 1
+    keepEigenVectors: 1
+    sortEigen: 1
+
+#- MaxDensityDataPointsFilter:
+#    maxDensity: 100.0
+#    maxDensity: 1000.0
+
+# - ShadowDataPointsFilter:
+#     eps: 0.1
+
+- SimpleSensorNoiseDataPointsFilter:
+    sensorType: 0
+#    angleThreshold: 80
+
+- ObservationDirectionDataPointsFilter
+
+- OrientNormalsDataPointsFilter:
+    towardCenter: 1

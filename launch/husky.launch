@@ -2,6 +2,7 @@
 <launch>
     <arg name="cloud" default="scan_filtered"/>
     <arg name="points_min_dist" default="0.125"/>
+    <arg name="icp" default="point_to_plane"/>
     <arg name="cmd_vel" default="cmd_vel"
          doc="Name of the topic on which the planner publishes the velocity commands"/>
 
@@ -20,12 +21,12 @@
 
     <node name="dynamic_mapper" type="dynamic_mapper" pkg="ethzasl_icp_mapper" output="log">
         <param name="subscribe_scan" value="false"/>
-        <param name="inputFiltersConfig" value="$(subt_virtual)/launch/dynamic_mapper/input_filters.yaml"/>
+        <param name="inputFiltersConfig" value="$(dirname)/dynamic_mapper/input_filters.yaml"/>
         <param if="$(eval icp == 'point_to_plane')"
-               name="icpConfig" value="$(subt_virtual)/launch/dynamic_mapper/icp.yaml"/>
+               name="icpConfig" value="$(dirname)/dynamic_mapper/icp.yaml"/>
         <param if="$(eval icp == 'point_to_plane_4dof')"
-               name="icpConfig" value="$(subt_virtual)/launch/dynamic_mapper/icp_4dof.yaml"/>
-        <param name="mapPostFiltersConfig" value="$(subt_virtual)/launch/dynamic_mapper/map_post_filters.yaml"/>
+               name="icpConfig" value="$(dirname)/dynamic_mapper/icp_4dof.yaml"/>
+        <param name="mapPostFiltersConfig" value="$(dirname)/dynamic_mapper/map_post_filters.yaml"/>
 
         <param name="odom_frame" value="odom"/>
         <param name="map_frame" value="map"/>
