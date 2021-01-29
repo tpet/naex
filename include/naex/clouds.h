@@ -653,18 +653,54 @@ namespace naex
         uint32_t width_;
     };
 
-    void update_point_occupancy(
-            const sensor_msgs::PointCloud2& map,
-            const sensor_msgs::PointCloud2& input,
-            const Vec3& origin,
-            const Elem eps)
+void copy_cloud_metadata(const sensor_msgs::PointCloud2& input,
+                         sensor_msgs::PointCloud2& output)
+{
+    output.header = input.header;
+//    output.height = input.height;
+//    output.width = input.width;
+    output.fields = input.fields;
+    output.is_bigendian = input.is_bigendian;
+    output.point_step = input.point_step;
+//    output.row_step = output.width * output.point_step;
+//    output.data.resize(indices.size() * output.point_step);
+    output.is_dense = input.is_dense;
+}
+
+/**
+ * Copy selected points.
+ * @tparam C A container type, with begin, end and size methods.
+ * @param input Input cloud.
+ * @param indices Container of indices.
+ * @param output Output cloud.
+ */
+template<typename C>
+void copy_points(const sensor_msgs::PointCloud2& input,
+                 const C indices,
+                 sensor_msgs::PointCloud2& output)
+{
+    Timer t;
+    output.header = input.header;
+    output.height = 1;
+    output.width = decltype(output.width)(indices.size());
+    output.fields = input.fields;
+    output.is_bigendian = input.is_bigendian;
+    output.point_step = input.point_step;
+    output.row_step = output.width * output.point_step;
+    output.data.resize(indices.size() * output.point_step);
+    output.is_dense = input.is_dense;
+    const auto in_ptr = input.data.data();
+    uint8_t* out_ptr = output.data.data();
+    auto it = indices.begin();
+    for (Index i = 0; i != indices.size(); ++i, ++it)
     {
-        // get nearby points
-        // reconstruct input surface
-        // update occupancy:
-        //   occupied if map point within [-eps, eps] distance,
-        //   empty if within [-inf, -eps) distance from input mesh.
+        std::copy(in_ptr + (*it) * input.point_step,
+                  in_ptr + (*it + 1) * input.point_step,
+                  out_ptr + i * output.point_step);
     }
+    ROS_INFO("%lu / %lu points copied (%.6f s).",
+             indices.size(), size_t(input.height * input.width), t.seconds_elapsed());
+}
 
 void step_subsample(const sensor_msgs::PointCloud2& input,
                     const Index max_rows,
@@ -748,14 +784,14 @@ void voxel_filter(const sensor_msgs::PointCloud2& input,
 {
     Timer t, t_part;
     assert(input.row_step % input.point_step == 0);
-    output.header = input.header;
+//    output.header = input.header;
 //    output.height = 1;
 //    output.width = 0;
-    output.fields = input.fields;
-    output.is_bigendian = input.is_bigendian;
-    output.point_step = input.point_step;
+//    output.fields = input.fields;
+//    output.is_bigendian = input.is_bigendian;
+//    output.point_step = input.point_step;
 //    output.row_step = output.width * input.point_step;
-    output.is_dense = input.is_dense;
+//    output.is_dense = input.is_dense;
 
 //    output.data.resize(output.height * output.width * output.point_step);
     const Index n_pts = input.height * input.width;
@@ -807,18 +843,19 @@ void voxel_filter(const sensor_msgs::PointCloud2& input,
 
     // Copy selected indices.
     t_part.reset();
-    output.height = 1;
-    output.width = decltype(output.width)(keep.size());
-    output.row_step = output.width * output.point_step;
-    output.data.resize(keep.size() * output.point_step);
-    in_ptr = input.data.data();
-    uint8_t* out_ptr = output.data.data();
-    for (Index i = 0; i < keep.size(); ++i)
-    {
-        std::copy(in_ptr + keep[i] * input.point_step,
-                  in_ptr + (keep[i] + 1) * input.point_step,
-                  out_ptr + i * output.point_step);
-    }
+//    output.height = 1;
+//    output.width = decltype(output.width)(keep.size());
+//    output.row_step = output.width * output.point_step;
+//    output.data.resize(keep.size() * output.point_step);
+//    in_ptr = input.data.data();
+//    uint8_t* out_ptr = output.data.data();
+//    for (Index i = 0; i < keep.size(); ++i)
+//    {
+//        std::copy(in_ptr + keep[i] * input.point_step,
+//                  in_ptr + (keep[i] + 1) * input.point_step,
+//                  out_ptr + i * output.point_step);
+//    }
+    copy_points(input, keep, output);
     ROS_INFO("%lu / %lu points kept by voxel filter (%.6f s).",
              keep.size(), size_t(n_pts), t_part.seconds_elapsed());
 }

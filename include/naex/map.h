@@ -928,6 +928,15 @@ public:
                        ? r0 * cloud.width + c0 + 1
                        : r0 * cloud.width + c0 - 1;
 
+            ConstVec3Map p0(&(x_begin + i0)[0]);
+            if (!std::isfinite(p0(0)) || !std::isfinite(p0(1)) || !std::isfinite(p0(2)))
+                continue;
+            ConstVec3Map p1(&(x_begin + i1)[0]);
+            if (!std::isfinite(p1(0)) || !std::isfinite(p1(1)) || !std::isfinite(p1(2)))
+                continue;
+            ConstVec3Map p2(&(x_begin + i2)[0]);
+            if (!std::isfinite(p2(0)) || !std::isfinite(p2(1)) || !std::isfinite(p2(2)))
+                continue;
             Vec4 plane = plane_from_points(ConstVec3Map(&(x_begin + i0)[0]),
                                            ConstVec3Map(&(x_begin + i1)[0]),
                                            ConstVec3Map(&(x_begin + i2)[0]));
@@ -935,10 +944,7 @@ public:
             // Make sure positive distance is towards sensor at [0, 0, 0],
             // i.e., outside from surface.
             if (plane(3) < 0.)
-            {
-//                plane = -plane;
                 plane *= -1;
-            }
 
             Value signed_dist = plane.dot(e2p(p));
             cloud_[i].dist_to_plane_ = signed_dist;

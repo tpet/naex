@@ -449,8 +449,8 @@ public:
     {
         Timer t;
         const size_t n_pts = cloud.height * cloud.width;
-        sensor_msgs::PointCloud2ConstIterator<Elem> it_points(cloud, "x");
-        sensor_msgs::PointCloud2ConstIterator<Elem> it_normals(cloud, "normal_x");
+        sensor_msgs::PointCloud2ConstIterator<Elem> it_points(cloud, position_name_);
+        sensor_msgs::PointCloud2ConstIterator<Elem> it_normals(cloud, normal_name_);
         Buffer<Elem> points_buf(3 * n_pts);
         Buffer<Elem> normals_buf(3 * n_pts);
         auto it_points_dst = points_buf.begin();
