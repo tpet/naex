@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
+    <!--
+    <arg name="cloud" default="os_cloud_node/points"/>
     <arg name="cloud" default="scan_filtered"/>
-    <arg name="points_min_dist" default="0.125"/>
+    -->
+    <arg name="cloud" default="os_cloud_node/points"/>
+
+    <arg name="points_min_dist" default="0.15"/>
     <arg name="icp" default="point_to_plane"/>
     <arg name="cmd_vel" default="cmd_vel"
          doc="Name of the topic on which the planner publishes the velocity commands"/>
@@ -10,13 +15,28 @@
           args="messages $(arg cloud) 0.5 $(arg cloud)_slow"
           respawn="true" respawn_delay="1.0" output="log"/>
 
-    <node name="os_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+    <node name="os_points_voxels" pkg="nodelet" type="nodelet"
+          args="standalone pcl/VoxelGrid" output="screen">
         <rosparam subst_value="true">
             leaf_size: $(arg points_min_dist)
             filter_field_name: ""
         </rosparam>
         <remap from="~input" to="$(arg cloud)_slow"/>
         <remap from="~output" to="$(arg cloud)_slow_filtered"/>
+    </node>
+
+    <node name="scan_filtered_throttle" pkg="topic_tools" type="throttle"
+          args="messages scan_filtered 0.5 scan_filtered_slow"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+    <node name="scan_filtered_voxels" pkg="nodelet" type="nodelet"
+          args="standalone pcl/VoxelGrid" output="screen">
+        <rosparam subst_value="true">
+            leaf_size: $(arg points_min_dist)
+            filter_field_name: ""
+        </rosparam>
+        <remap from="~input" to="scan_filtered_slow"/>
+        <remap from="~output" to="scan_filtered_voxels"/>
     </node>
 
     <node name="dynamic_mapper" type="dynamic_mapper" pkg="ethzasl_icp_mapper" output="log">
@@ -54,6 +74,9 @@
         <remap from="cloud_in" to="$(arg cloud)_slow_filtered"/>
     </node>
 
+    <!--
+          launch-prefix="valgrind"
+    -->
     <node name="naex_planner" pkg="naex" type="planner"
           respawn="true" respawn_delay="1.0" output="screen">
         <!--
@@ -81,32 +104,30 @@
 
             max_nn_height_diff: 0.15
             <!--
-            X1
+            husky
             clearance_radius: 0.6
             clearance_low: 0.1
-            clearance_high: 0.7
-            X2
-            clearance_radius: 0.5
-            clearance_low: 0.1
-            clearance_high: 0.5
+            clearance_high: 0.8
             -->
             clearance_radius: 0.6
             clearance_low: 0.1
-            clearance_high: 0.7
+            clearance_high: 0.8
             min_points_obstacle: 1
-            max_ground_diff_std: 0.06
-            max_ground_abs_diff_mean: 0.06
+            max_ground_diff_std: 0.08
+            max_ground_abs_diff_mean: 0.08
             edge_min_centroid_offset: 0.4
             min_dist_to_obstacle: 0.0
 
             viewpoints_update_freq: 1.
-            min_vp_distance: 1.
+            min_vp_distance: 1.5
             max_vp_distance: 5.
             self_factor: 0.5
+            path_cost_pow: 1.0
             planning_freq: 0.5
 
             min_num_empty: 4
-            min_empty_ratio: 2.0
+            min_empty_ratio: 1.5
+            max_occ_counter: 15
 
             points_min_dist: $(arg points_min_dist)
             filter_robots: true
@@ -139,26 +160,26 @@
             max_path_dist: [0.8, 2.5, 2.5, 2.5]
             look_ahead: 0.8
 <!--            max_speed: 1.0-->
-            max_speed: 0.1
+            max_speed: 0.3
             max_force_through_speed: 0.05
 <!--            max_angular_rate: 1.5-->
-            max_angular_rate: 0.25
-            keep_path: 5.
+            max_angular_rate: 0.5
+            keep_path: 10.
             keep_cloud_box: [[-3.0, 3.0], [-3.0, 3.0], [-2.0, 2.0]]
             <!--
             X1
-            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
+            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.8]]
             X2
             clearance_box: [[-0.4, 0.4], [-0.3, 0.3], [0.15, 0.5]]
             -->
-            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.1, 0.7]]
+            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.15, 0.8]]
             show_clearance_pos: [-2, 2]
             min_points_obstacle: 3
-            force_through_after: 60.0
-            backtrack_after: 120.0
+            force_through_after: 3600.0
+            backtrack_after: 3600.0
             allow_backward: True
         </rosparam>
-        <remap from="cloud" to="$(arg cloud)_slow_filtered"/>
+        <remap from="cloud" to="scan_filtered_voxels"/>
         <remap from="path" to="path"/>
         <remap from="clearance" to="clearance"/>
         <remap from="cmd_vel" to="$(arg cmd_vel)"/>
