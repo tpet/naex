@@ -193,7 +193,7 @@ public:
     {}
 
     // TODO: Make K_NEIGHBORS a parameter.
-    static const Index K_NEIGHBORS = 32;
+    static const Index K_NEIGHBORS = 48;
     Value position_[3];
     // NN Graph
     // Number of valid entries in neighbors_ and distances_.

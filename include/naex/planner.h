@@ -69,6 +69,7 @@ public:
         min_vp_distance_(1.5),
         max_vp_distance_(5.0),
         self_factor_(0.25),
+        path_cost_pow_(0.75),
         planning_freq_(0.5),
         random_start_(false),
         initialized_(false),
@@ -91,6 +92,7 @@ public:
         Lock lock(initialized_mutex_);
         initialized_ = true;
         time_initialized_ = ros::Time::now().toSec();
+//        bootstrap_map();
         ROS_INFO("Initialized at %.1f s (%.3f s).",
                  time_initialized_, t.seconds_elapsed());
     }
@@ -106,7 +108,7 @@ public:
         pnh_.param("max_mean_abs_ground_diff", map_.max_mean_abs_ground_diff_, map_.max_mean_abs_ground_diff_);
         pnh_.param("edge_min_centroid_offset", map_.edge_min_centroid_offset_, map_.edge_min_centroid_offset_);
         pnh_.param("min_dist_to_obstacle", map_.min_dist_to_obstacle_, map_.min_dist_to_obstacle_);
-        ROS_INFO("Parameters updated (%.6f s).", t.seconds_elapsed());
+        ROS_DEBUG("Parameters updated (%.6f s).", t.seconds_elapsed());
     }
 
     void configure()
@@ -128,6 +130,7 @@ public:
         pnh_.param("min_vp_distance", min_vp_distance_, min_vp_distance_);
         pnh_.param("max_vp_distance", max_vp_distance_, max_vp_distance_);
         pnh_.param("self_factor", self_factor_, self_factor_);
+        pnh_.param("path_cost_pow", path_cost_pow_, path_cost_pow_);
         pnh_.param("planning_freq", planning_freq_, planning_freq_);
 
         int num_input_clouds = 1;
@@ -138,6 +141,7 @@ public:
 
         pnh_.param("min_num_empty", map_.min_num_empty_, map_.min_num_empty_);
         pnh_.param("min_empty_ratio", map_.min_empty_ratio_, map_.min_empty_ratio_);
+        pnh_.param("max_occ_counter", map_.max_occ_counter_, map_.max_occ_counter_);
 
         pnh_.param("filter_robots", filter_robots_, filter_robots_);
 
@@ -199,6 +203,71 @@ public:
                                                    &Planner::update_params, this);
 
         get_plan_service_ = nh_.advertiseService("get_plan", &Planner::plan, this);
+    }
+
+    bool bigendian()
+    {
+        uint16_t num = 1;
+        return !(*(uint8_t*)&num == 1);
+    }
+
+    void bootstrap_map()
+    {
+        ros::Time now;
+        geometry_msgs::TransformStamped tf;
+        while (true)
+        {
+            now = ros::Time::now();
+            try
+            {
+                tf = tf_->lookupTransform(map_frame_, robot_frame_, now, ros::Duration(5.));
+                break;
+            }
+            catch (const tf2::TransformException& ex)
+            {
+                ROS_ERROR("Could not localize robot to bootstrap map: %s.", ex.what());
+            }
+        }
+        Vec3 origin(tf.transform.translation.x,
+                    tf.transform.translation.y,
+                    tf.transform.translation.z);
+        flann::Matrix<Value> origin_mat(&origin(0), 1, 3);
+
+        int n = int(10 * map_.clearance_radius_ / map_.points_min_dist_ + 1);
+
+//        auto cloud = std::make_shared<sensor_msgs::PointCloud2>();
+//        auto cloud = boost::make_shared<sensor_msgs::PointCloud2>();
+//        cloud->header.frame_id = robot_frame_;
+//        cloud->header.stamp = now;
+//        cloud->is_bigendian = bigendian();
+//        cloud->is_dense = true;
+//        append_field<float>("x", 1, *cloud);
+//        append_field<float>("y", 1, *cloud);
+//        append_field<float>("z", 1, *cloud);
+//        resize_cloud(*cloud, uint32_t(1), uint32_t(n * n));
+//        sensor_msgs::PointCloud2Iterator<float> pt(*cloud, "x");
+        std::vector<Value> points_buf;
+        points_buf.reserve(size_t(3 * n * n));
+        for (int i = 0; i < n; ++i)
+        {
+            for (int j = 0; j < n; ++j)
+            {
+//                pt[0] = (-n / 2 + i) * map_.points_min_dist_;
+//                pt[1] = (-n / 2 + j) * map_.points_min_dist_;
+//                pt[2] = 0;
+                points_buf.push_back((-n / 2 + i) * map_.points_min_dist_);
+                points_buf.push_back((-n / 2 + j) * map_.points_min_dist_);
+                points_buf.push_back(0);
+            }
+        }
+//        input_cloud_received(cloud);
+        flann::Matrix<Value> points(points_buf.data(), 1, size_t(n * n));
+        Lock index_lock(map_.index_mutex_);
+        Lock cloud_lock(map_.cloud_mutex_);
+        Lock lock_dirty(map_.dirty_mutex_);
+        map_.merge(points, origin_mat);
+        map_.update_dirty();
+        ROS_WARN("Map bootstrapped with %i points (%lu in map).", n * n, map_.size());
     }
 
     Value inline time_from_init(const double time)
@@ -266,8 +335,8 @@ public:
                 assert(q.nn_.size() == 1);
                 assert(q.dist_.size() == 1);
 
-                ROS_INFO("%lu / %lu points within %.1f m from %s origin.",
-                         q.nn_[0].size(), map_.index_->size(), max_vp_distance_, frame.c_str());
+                ROS_DEBUG("%lu / %lu points within %.1f m from %s origin.",
+                          q.nn_[0].size(), map_.index_->size(), max_vp_distance_, frame.c_str());
                 for (Index i = 0; i < q.nn_[0].size(); ++i)
                 {
                     const Vertex v = q.nn_[0][i];
@@ -567,10 +636,12 @@ public:
             Lock lock(map_.cloud_mutex_);
             for (const auto v: map_.nearby_indices(start_position.data(), start_tol))
             {
-                if (map_.cloud_[v].flags_ & TRAVERSABLE)
+                if (!(map_.cloud_[v].flags_ & TRAVERSABLE)
+                        || (map_.cloud_[v].flags_ & EDGE))
                 {
-                    traversable.push_back(v);
+                    continue;
                 }
+                traversable.push_back(v);
             }
         }
         if (traversable.empty())
@@ -582,17 +653,17 @@ public:
         const Vertex v_start = random_start_
                                ? traversable[std::rand() % traversable.size()]
                                : traversable[0];
-        ROS_INFO("%s point %lu at [%.1f, %.1f, %.1f] chosen "
-                 "from %lu traversable ones within %.1f m "
-                 "from start position [%.1f, %.1f, %.1f].",
-                 (random_start_ ? "Random" : "Closest"), size_t(v_start),
-                 map_.cloud_[v_start].position_[0],
-                 map_.cloud_[v_start].position_[1],
-                 map_.cloud_[v_start].position_[2],
-                 traversable.size(), start_tol,
-                 req.start.pose.position.x,
-                 req.start.pose.position.y,
-                 req.start.pose.position.z);
+        ROS_DEBUG("%s point %lu at [%.1f, %.1f, %.1f] chosen "
+                  "from %lu traversable ones within %.1f m "
+                  "from start position [%.1f, %.1f, %.1f].",
+                  (random_start_ ? "Random" : "Closest"), size_t(v_start),
+                  map_.cloud_[v_start].position_[0],
+                  map_.cloud_[v_start].position_[1],
+                  map_.cloud_[v_start].position_[2],
+                  traversable.size(), start_tol,
+                  req.start.pose.position.x,
+                  req.start.pose.position.y,
+                  req.start.pose.position.z);
 
         // TODO: Append starting pose as a special vertex with orientation dependent edges.
         // Note, that for some worlds and robots, the neighborhood must be quite large to get traversable points.
@@ -687,7 +758,7 @@ public:
             }
 
             map_.cloud_[v].path_cost_ = std::isfinite(path_costs[v])
-                                        ? path_costs[v]
+                                        ? std::pow(path_costs[v], path_cost_pow_)
                                         : std::numeric_limits<Value>::quiet_NaN();
             map_.cloud_[v].relative_cost_ = map_.cloud_[v].path_cost_
                 / map_.cloud_[v].reward_;
@@ -718,14 +789,6 @@ public:
             ROS_ERROR("No valid path/goal found.");
             return false;
         }
-        ROS_INFO("Goal position [%.1f, %.1f, %.1f] "
-                 "has path cost %.3f, reward %.3f, relative cost %.3f.",
-                 map_.cloud_[v_goal].position_[0],
-                 map_.cloud_[v_goal].position_[1],
-                 map_.cloud_[v_goal].position_[2],
-                 map_.cloud_[v_goal].path_cost_,
-                 map_.cloud_[v_goal].reward_,
-                 map_.cloud_[v_goal].relative_cost_);
 
         // TODO: Remove inf from path cost for visualization?
 
@@ -737,10 +800,16 @@ public:
         res.plan.poses.push_back(start);
 //            append_path(path_indices, points, normals, res.plan);
         append_path(path_indices, map_.cloud_, res.plan);
-        ROS_DEBUG("Path with %lu poses traced and built (%.6f s).",
-                  res.plan.poses.size(), t_path.seconds_elapsed());
-        ROS_INFO("Path with %lu poses planned (%.3f s).",
-                 res.plan.poses.size(), t.seconds_elapsed());
+        ROS_INFO("Path with %lu poses to goal [%.1f, %.1f, %.1f] "
+                 "has cost %.3f, reward %.3f, relative cost %.3f (%.3f s).",
+                 res.plan.poses.size(),
+                 map_.cloud_[v_goal].position_[0],
+                 map_.cloud_[v_goal].position_[1],
+                 map_.cloud_[v_goal].position_[2],
+                 map_.cloud_[v_goal].path_cost_,
+                 map_.cloud_[v_goal].reward_,
+                 map_.cloud_[v_goal].relative_cost_,
+                 t.seconds_elapsed());
         return true;
     }
 
@@ -871,18 +940,6 @@ public:
         }
     }
 
-    void filter_out_robots(
-        const sensor_msgs::PointCloud2::ConstPtr& cloud,
-        std::vector<uint8_t>& keep)
-    {
-
-    }
-
-//        void clear_cloud(const sensor_msgs::PointCloud2& cloud)
-//        {
-//
-//        }
-
 //    void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
     void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& input)
     {
@@ -977,18 +1034,6 @@ public:
         Lock index_lock(map_.index_mutex_);
         Lock cloud_lock(map_.cloud_mutex_);
 
-        // TODO: Update occupancy. Move it above.
-//            if (step.height > 1)
-//            {
-//                map_.update_occupancy_organized(*cloud, tf.transform);
-//                map_.update_occupancy_organized(step, tf.transform);
-//            }
-//            else
-//            {
-//                ROS_WARN("Unstructured cloud received.");
-//                map_.update_occupancy_unorganized(points, origin_mat);
-//            }
-
         {
             Lock lock_dirty(map_.dirty_mutex_);
             map_.merge(points, origin_mat);
@@ -1019,7 +1064,7 @@ public:
             const auto ind = map_.nearby_indices(origin.data(), 20.);
             map_.create_debug_cloud(ind.begin(), ind.size(), local_map);
             local_map_pub_.publish(local_map);
-            ROS_INFO("Sending local cloud: %.3f s.", t_local.seconds_elapsed());
+            ROS_DEBUG("Sending local cloud: %.3f s.", t_local.seconds_elapsed());
         }
 
         if (map_pub_.getNumSubscribers() > 0)
@@ -1081,6 +1126,7 @@ protected:
     float min_vp_distance_;
     float max_vp_distance_;
     float self_factor_;
+    float path_cost_pow_;
     // Re-planning frequency, repeating the last request if positive.
     float planning_freq_;
     // Randomize starting vertex within tolerance radius.

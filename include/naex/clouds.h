@@ -596,10 +596,10 @@ namespace naex
             height_ = cloud.height;
             width_ = cloud.width;
 
-            ROS_INFO("Robust fit [deg]: "
-                     "azimuth [%.1f, %.1f], step %.3f (from %lu models), "
-                     "elevation [%.1f, %.1f], step %.3f (from %lu models) "
-                     "(%.6f s).",
+            ROS_DEBUG("Robust fit [deg]: "
+                      "azimuth [%.1f, %.1f], step %.3f (from %lu models), "
+                      "elevation [%.1f, %.1f], step %.3f (from %lu models) "
+                      "(%.6f s).",
                      degrees(azimuth_start_), degrees(azimuth_start_ + (width_ - 1) * azimuth_step_),
                      degrees(azimuth_step_), az_models.size(),
                      degrees(elevation_start_), degrees(elevation_start_ + (height_ - 1) * elevation_step_),
@@ -698,8 +698,8 @@ void copy_points(const sensor_msgs::PointCloud2& input,
                   in_ptr + (*it + 1) * input.point_step,
                   out_ptr + i * output.point_step);
     }
-    ROS_INFO("%lu / %lu points copied (%.6f s).",
-             indices.size(), size_t(input.height * input.width), t.seconds_elapsed());
+    ROS_DEBUG("%lu / %lu points copied (%.6f s).",
+              indices.size(), size_t(input.height * input.width), t.seconds_elapsed());
 }
 
 void step_subsample(const sensor_msgs::PointCloud2& input,
@@ -725,17 +725,14 @@ void step_subsample(const sensor_msgs::PointCloud2& input,
     for (Index r = 0; r < output.height; ++r)
     {
         for (Index c = 0; c < output.width; ++c)
-//                in_ptr += col_step * input.point_step,
-//                out_ptr += output.point_step)
         {
-//            std::copy(in_ptr, in_ptr + input.point_step, out_ptr);
             std::copy(in_ptr + (r * row_step * input.row_step + (c * col_step) * input.point_step),
                       in_ptr + (r * row_step * input.row_step + (c * col_step + 1) * input.point_step),
                       out_ptr + (r * output.row_step + c * output.point_step));
         }
     }
-    ROS_INFO("Step-subsample %u-by-%u cloud to %u-by-%u (%.6f s).",
-             input.height, input.width, output.height, output.width, t.seconds_elapsed());
+    ROS_DEBUG("Step-subsample %u-by-%u cloud to %u-by-%u (%.6f s).",
+              input.height, input.width, output.height, output.width, t.seconds_elapsed());
 }
 
 class Voxel
@@ -765,10 +762,6 @@ public:
                 ^ std::hash<int>{}(y_)
                 ^ std::hash<int>{}(z_));
     }
-//    bool operator==(const Voxel& a, const Voxel& b)
-//    {
-//        return (a.x_ == b.x_) && (a.y_ == b.y_) && (a.z_ == b.z_);
-//    }
     friend bool operator==(const Voxel& a, const Voxel& b)
     {
         return (a.x_ == b.x_) && (a.y_ == b.y_) && (a.z_ == b.z_);
@@ -784,16 +777,6 @@ void voxel_filter(const sensor_msgs::PointCloud2& input,
 {
     Timer t, t_part;
     assert(input.row_step % input.point_step == 0);
-//    output.header = input.header;
-//    output.height = 1;
-//    output.width = 0;
-//    output.fields = input.fields;
-//    output.is_bigendian = input.is_bigendian;
-//    output.point_step = input.point_step;
-//    output.row_step = output.width * input.point_step;
-//    output.is_dense = input.is_dense;
-
-//    output.data.resize(output.height * output.width * output.point_step);
     const Index n_pts = input.height * input.width;
 
     t_part.reset();
@@ -806,8 +789,8 @@ void voxel_filter(const sensor_msgs::PointCloud2& input,
     std::random_device rd;
     std::mt19937 g(rd());
     std::shuffle(indices.begin(), indices.end(), g);
-    ROS_INFO("Created random permutation of %lu points (%.6f s).",
-             size_t(n_pts), t_part.seconds_elapsed());
+    ROS_DEBUG("Created random permutation of %lu points (%.6f s).",
+              size_t(n_pts), t_part.seconds_elapsed());
 
     t_part.reset();
     std::vector<Index> keep;
@@ -830,8 +813,6 @@ void voxel_filter(const sensor_msgs::PointCloud2& input,
         }
 //        const Voxel voxel(int(x), int(y), int(z));
         const Voxel voxel((int)x, (int)y, (int)z);
-//        const Voxel voxel = Voxel(int(x), int(y), int(z));
-//        const auto it = voxels.find(voxel);
         if (voxels.find(voxel) == voxels.end())
         {
 //            voxels.insert(it, voxel);
@@ -839,25 +820,13 @@ void voxel_filter(const sensor_msgs::PointCloud2& input,
             keep.push_back(i);
         }
     }
-    ROS_INFO("Getting %lu indices to keep (%.6f s).", keep.size(), t_part.seconds_elapsed());
+    ROS_DEBUG("Getting %lu indices to keep (%.6f s).", keep.size(), t_part.seconds_elapsed());
 
     // Copy selected indices.
     t_part.reset();
-//    output.height = 1;
-//    output.width = decltype(output.width)(keep.size());
-//    output.row_step = output.width * output.point_step;
-//    output.data.resize(keep.size() * output.point_step);
-//    in_ptr = input.data.data();
-//    uint8_t* out_ptr = output.data.data();
-//    for (Index i = 0; i < keep.size(); ++i)
-//    {
-//        std::copy(in_ptr + keep[i] * input.point_step,
-//                  in_ptr + (keep[i] + 1) * input.point_step,
-//                  out_ptr + i * output.point_step);
-//    }
     copy_points(input, keep, output);
-    ROS_INFO("%lu / %lu points kept by voxel filter (%.6f s).",
-             keep.size(), size_t(n_pts), t_part.seconds_elapsed());
+    ROS_DEBUG("%lu / %lu points kept by voxel filter (%.6f s).",
+              keep.size(), size_t(n_pts), t_part.seconds_elapsed());
 }
 
 }  // namespace naex

@@ -281,7 +281,6 @@ class PathFollower(object):
             # marker.pose = pose
             pose_arr = numpify(pose.pose)
             center = self.clearance_box.mean(axis=1, keepdims=True)
-            # TODO: Transpose?
             pose_arr[:3, 3:] += np.dot(pose_arr[:3, :3], center)
             marker.pose = msgify(Pose, pose_arr)
             marker.scale.x, marker.scale.y, marker.scale.z \
@@ -324,7 +323,10 @@ class PathFollower(object):
             t = timer()
             with self.path_lock:
                 pose_msg = self.get_robot_pose(self.map_frame)
-                self.path_traversed.append(pose_msg)
+                cur_pos = numpify(pose_msg.position)
+                prev_pos = numpify(self.path_traversed[0].position) if len(self.path_traversed) > 0 else None
+                if prev_pos is None or np.linalg.norm(cur_pos - prev_pos) > 0.1:
+                    self.path_traversed.append(pose_msg)
                 if len(self.path_traversed) > 3000:
                     self.path_traversed = self.path_traversed[-3000:]
 

@@ -33,8 +33,9 @@ public:
             points_min_dist_(0.2f),
             min_empty_cos_(0.3f),
             // Occupancy
-            min_num_empty_(4),
-            min_empty_ratio_(2.0f),
+            min_num_empty_(2),
+            min_empty_ratio_(1.0f),
+            max_occ_counter_(7),
             neighborhood_radius_(0.6f),
             edge_min_centroid_offset_(0.5f),
             // Traversability
@@ -142,7 +143,7 @@ public:
         const auto v1 = target(e);
 //            if (labels_[v0] != TRAVERSABLE || labels_[v1] != TRAVERSABLE)
 //        if (cloud_[v1].functional_label_ != TRAVERSABLE)
-        if (!(cloud_[v1].flags_ & TRAVERSABLE))
+        if (!(cloud_[v1].flags_ & TRAVERSABLE) || cloud_[v1].flags_ & EDGE)
         {
             return std::numeric_limits<Cost>::infinity();
         }
@@ -223,53 +224,14 @@ public:
                     flann::KDTreeSingleIndexParams());
             // TODO: Is this necessary?
             index_->buildIndex();
-            ROS_INFO("Index updated for %lu points (%.3f s).",
-                     index_->size(), t.seconds_elapsed());
+            ROS_DEBUG("Index updated for %lu points (%.3f s).",
+                      index_->size(), t.seconds_elapsed());
         }
         else
         {
             ROS_INFO("Index not updated due to empty map.");
         }
     }
-
-//    /**
-//     * Assign point labels based on normal orientation.
-//     */
-//    template<typename It>
-////    void compute_normal_labels(const std::vector<Index>& indices)
-//    void compute_normal_labels(It begin, It end)
-//    {
-//        Timer t;
-//        // Maximum slope allowed in some direction.
-//        auto max_slope = std::max(max_pitch_, max_roll_);
-//        auto min_z = std::cos(max_slope);
-//        size_t n_horizontal = 0;
-//        size_t n = 0;
-////        for (Index i = 0; i < size(); ++i)
-////        for (auto it = indices.begin(); it != indices.end(); ++it)
-////        Index n = 0;
-//        for (It it = begin; it != end; ++it, ++n)
-//        {
-//            const auto i = *it;
-//            // TODO: Check sign once normals keep consistent orientation.
-//            if (std::abs(cloud_[i].normal_[2]) >= min_z)
-//            {
-//                // Approx. horizontal based on normal.
-////                cloud_[i].normal_label_ = TRAVERSABLE;
-//                cloud_[i].flags_ |= HORIZONTAL;
-//                ++n_horizontal;
-//            }
-//            else  // if (std::abs(normals_[i][2]) < min_z)
-//            {
-//                // Approx. vertical based on normal.
-////                cloud_[i].normal_label_ = OBSTACLE;
-//                cloud_[i].flags_ &= ~(HORIZONTAL | TRAVERSABLE);
-////                ++n_obstacle;
-//            }
-//        }
-//        ROS_INFO("%lu / %lu points horizontal (%.3f s).",
-//                 n_horizontal, n, t.seconds_elapsed());
-//    }
 
     std::vector<Index> collect_points_to_update()
     {
@@ -401,20 +363,20 @@ public:
 
         Timer t_part;
         update_neighborhood(dirty_indices_.begin(), dirty_indices_.end());
-        ROS_DEBUG("Graph updated at %lu points (%.6f s).",
-                  dirty_indices_.size(), t_part.seconds_elapsed());
+//        ROS_DEBUG("Graph updated at %lu points (%.6f s).",
+//                  dirty_indices_.size(), t_part.seconds_elapsed());
 
         t_part.reset();
         compute_features(dirty_indices_.begin(), dirty_indices_.end());
-        ROS_DEBUG("Features updated at %lu points (%.6f s).",
-                  dirty_indices_.size(), t_part.seconds_elapsed());
+//        ROS_DEBUG("Features updated at %lu points (%.6f s).",
+//                  dirty_indices_.size(), t_part.seconds_elapsed());
 
         t_part.reset();
         compute_labels(dirty_indices_.begin(), dirty_indices_.end());
-        ROS_DEBUG("Labels updated at %lu points (%.6f s).",
-                  dirty_indices_.size(), t_part.seconds_elapsed());
+//        ROS_DEBUG("Labels updated at %lu points (%.6f s).",
+//                  dirty_indices_.size(), t_part.seconds_elapsed());
 
-        ROS_INFO("%lu points updated (%.3f s).", dirty_indices_.size(), t.seconds_elapsed());
+        ROS_DEBUG("%lu points updated (%.3f s).", dirty_indices_.size(), t.seconds_elapsed());
     }
 
     void clear_dirty()
@@ -496,8 +458,8 @@ public:
                 cloud_[v0].flags_ &= ~EDGE;
             }
         }
-        ROS_INFO("%lu / %lu edge points (%.4f s).",
-                 size_t(n_edge), size_t(n), t.seconds_elapsed());
+        ROS_DEBUG("%lu / %lu edge points (%.4f s).",
+                  size_t(n_edge), size_t(n), t.seconds_elapsed());
     }
 
     template<typename It>
@@ -628,10 +590,10 @@ public:
                 ++n_traverable;
             }
         }
-        ROS_INFO("%lu labels updated: %lu horizontal, %lu traversable, "
-                 "%lu empty, %lu actor, (%.3f s).",
-                 size_t(n), size_t(n_horizontal), size_t(n_traverable),
-                 size_t(n_empty), size_t(n_actor), t.seconds_elapsed());
+        ROS_DEBUG("%lu labels updated: %lu horizontal, %lu traversable, "
+                  "%lu empty, %lu actor, (%.3f s).",
+                  size_t(n), size_t(n_horizontal), size_t(n_traverable),
+                  size_t(n_empty), size_t(n_actor), t.seconds_elapsed());
     }
 
     /** Resize point buffers if necessary, update wrappers and index. */
@@ -881,7 +843,6 @@ public:
             ROS_WARN("Could not fit cloud model (%.6f s).", t_part.seconds_elapsed());
             return;
         }
-        ROS_INFO("Got cloud model (%.6f s).", t_part.seconds_elapsed());
 
         sensor_msgs::PointCloud2ConstIterator<float> x_begin(cloud, "x");
         Eigen::Isometry3f cloud_to_map(tf2::transformToEigen(cloud_to_map_tf));
@@ -893,8 +854,8 @@ public:
         Lock dirty_lock(dirty_mutex_);
         t_part.reset();
         Vec3 origin = cloud_to_map.translation();
-        RadiusQuery<Value> q_map(*index_, FlannMat(origin.data(), 1, 3), 10.f);
-        ROS_INFO("%lu closest map points found (%.6f s).", q_map.nn_[0].size(), t_part.seconds_elapsed());
+        RadiusQuery<Value> q_map(*index_, FlannMat(origin.data(), 1, 3), 5.f);
+        ROS_DEBUG("%lu closest map points found (%.6f s).", q_map.nn_[0].size(), t_part.seconds_elapsed());
 
         // Test each map point nearby, whether we can see through.
         Index n_occupied = 0;
@@ -961,7 +922,7 @@ public:
                 // Known surface measured again.
                 // TODO: Param max occupancy sample size.
 //                if (cloud_[i].num_occupied_ == std::numeric_limits<decltype(cloud_[i].num_occupied_)>::max())
-                if (cloud_[i].num_occupied_ == 15)
+                if (cloud_[i].num_occupied_ >= max_occ_counter_)
                 {
                     cloud_[i].num_occupied_ /= 2;
                     cloud_[i].num_empty_ /= 2;
@@ -974,7 +935,7 @@ public:
                 // Known surface seen through,
                 // indicating it may be noise or it moved somewhere else.
 //                if (cloud_[i].num_empty_ == std::numeric_limits<decltype(cloud_[i].num_empty_)>::max())
-                if (cloud_[i].num_empty_ == 15)
+                if (cloud_[i].num_empty_ >= max_occ_counter_)
                 {
                     cloud_[i].num_occupied_ /= 2;
                     cloud_[i].num_empty_ /= 2;
@@ -999,7 +960,7 @@ public:
                     for (const auto j: graph_[i].neighbors_)
                     {
                         // Don't add removed points.
-                        if (!std::isfinite(cloud_[j].position_[0]))
+                        if (!(cloud_[j].flags_ & STATIC))
                         {
                             continue;
                         }
@@ -1024,7 +985,7 @@ public:
                     for (const auto j: graph_[i].neighbors_)
                     {
                         // Don't add removed points.
-                        if (!std::isfinite(cloud_[j].position_[0]))
+                        if (!(cloud_[j].flags_ & STATIC))
                         {
                             continue;
                         }
@@ -1037,7 +998,6 @@ public:
         ROS_INFO("Occupancy of %lu points updated, %lu modified state, %lu occluded, %lu occupied, %lu empty (%.6f s).",
                  q_map.nn_[0].size(), size_t(n_modified), size_t(n_occluded), size_t(n_occupied), size_t(n_empty),
                  t_part.seconds_elapsed());
-        ROS_INFO("Occupancy updated (%.3f s).", t.seconds_elapsed());
     }
 
     void update_occupancy_unorganized(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
@@ -1216,7 +1176,7 @@ public:
             graph_.push_back(neigh);
         }
         assert(cloud_.size() == points.rows);
-        ROS_INFO("%lu dirty indices.", dirty_indices_.size());
+        ROS_DEBUG("%lu dirty indices.", dirty_indices_.size());
 //        ROS_INFO("Map initialized with %lu points.", points.rows);
         update_index();
 //        update_dirty();
@@ -1250,7 +1210,7 @@ public:
         // Find NN distance within current map.
 //        Lock index_lock(index_mutex_);
         Query<Elem> q(*index_, points, Neighborhood::K_NEIGHBORS, neighborhood_radius_);
-        ROS_INFO("Got neighbors for %lu points (%.3f s).",
+        ROS_DEBUG("Got neighbors for %lu points (%.3f s).",
                   points.rows,
                   t.seconds_elapsed());
 
@@ -1481,6 +1441,8 @@ public:
     float min_empty_cos_;
     int min_num_empty_;
     float min_empty_ratio_;
+    int max_occ_counter_;
+
     // Graph
 //    int neighbor
     float neighborhood_radius_;
