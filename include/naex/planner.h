@@ -92,7 +92,7 @@ public:
         Lock lock(initialized_mutex_);
         initialized_ = true;
         time_initialized_ = ros::Time::now().toSec();
-//        bootstrap_map();
+        bootstrap_map();
         ROS_INFO("Initialized at %.1f s (%.3f s).",
                  time_initialized_, t.seconds_elapsed());
     }
@@ -213,61 +213,56 @@ public:
 
     void bootstrap_map()
     {
-        ros::Time now;
-        geometry_msgs::TransformStamped tf;
-        while (true)
+        ROS_INFO("Bootstrapping map with traversable robot neighborhood.");
+
+        int n = int(4 * map_.clearance_radius_ / map_.points_min_dist_ + 1);
+        int n_pts = n * n;
+        auto now = ros::Time::now();
+
+        Eigen::Isometry3f cloud_to_map;
+        try
         {
-            now = ros::Time::now();
-            try
-            {
-                tf = tf_->lookupTransform(map_frame_, robot_frame_, now, ros::Duration(5.));
-                break;
-            }
-            catch (const tf2::TransformException& ex)
-            {
-                ROS_ERROR("Could not localize robot to bootstrap map: %s.", ex.what());
-            }
+            ros::Duration timeout(60.);
+            const auto cloud_to_map_tf = tf_->lookupTransform(map_frame_, robot_frame_, now, timeout);
+            cloud_to_map = tf2::transformToEigen(cloud_to_map_tf.transform).cast<float>();
         }
-        Vec3 origin(tf.transform.translation.x,
-                    tf.transform.translation.y,
-                    tf.transform.translation.z);
-        flann::Matrix<Value> origin_mat(&origin(0), 1, 3);
+        catch (const tf2::TransformException& ex)
+        {
+            ROS_ERROR("Could not bootstrap map due to missing transform from %s into map %s: %s.",
+                      robot_frame_.c_str(), map_frame_.c_str(), ex.what());
+            return;
+        }
+        ROS_INFO("Position of %s in map %s: [%.1f %.1f %.1f].",
+                 robot_frame_.c_str(), map_frame_.c_str(),
+                 cloud_to_map(0, 3), cloud_to_map(1, 3), cloud_to_map(2, 3));
 
-        int n = int(10 * map_.clearance_radius_ / map_.points_min_dist_ + 1);
+        sensor_msgs::PointCloud2 cloud;
+        cloud.header.frame_id = map_frame_;
+        cloud.header.stamp = now;
+        cloud.is_bigendian = bigendian();
+        cloud.is_dense = true;
+        append_field<float>("x", 1, cloud);
+        append_field<float>("y", 1, cloud);
+        append_field<float>("z", 1, cloud);
+        resize_cloud(cloud, uint32_t(1), uint32_t(n_pts));
+        sensor_msgs::PointCloud2Iterator<float> pt(cloud, "x");
 
-//        auto cloud = std::make_shared<sensor_msgs::PointCloud2>();
-//        auto cloud = boost::make_shared<sensor_msgs::PointCloud2>();
-//        cloud->header.frame_id = robot_frame_;
-//        cloud->header.stamp = now;
-//        cloud->is_bigendian = bigendian();
-//        cloud->is_dense = true;
-//        append_field<float>("x", 1, *cloud);
-//        append_field<float>("y", 1, *cloud);
-//        append_field<float>("z", 1, *cloud);
-//        resize_cloud(*cloud, uint32_t(1), uint32_t(n * n));
-//        sensor_msgs::PointCloud2Iterator<float> pt(*cloud, "x");
-        std::vector<Value> points_buf;
-        points_buf.reserve(size_t(3 * n * n));
         for (int i = 0; i < n; ++i)
         {
-            for (int j = 0; j < n; ++j)
+            for (int j = 0; j < n; ++j, ++pt)
             {
-//                pt[0] = (-n / 2 + i) * map_.points_min_dist_;
-//                pt[1] = (-n / 2 + j) * map_.points_min_dist_;
-//                pt[2] = 0;
-                points_buf.push_back((-n / 2 + i) * map_.points_min_dist_);
-                points_buf.push_back((-n / 2 + j) * map_.points_min_dist_);
-                points_buf.push_back(0);
+                Vec3 x_cloud((-n / 2 + i) * map_.points_min_dist_,
+                             (-n / 2 + j) * map_.points_min_dist_,
+                             0);
+                Vec3 x_map = cloud_to_map * x_cloud;
+                pt[0] = x_map(0);
+                pt[1] = x_map(1);
+                pt[2] = x_map(2);
             }
         }
-//        input_cloud_received(cloud);
-        flann::Matrix<Value> points(points_buf.data(), 1, size_t(n * n));
-        Lock index_lock(map_.index_mutex_);
-        Lock cloud_lock(map_.cloud_mutex_);
-        Lock lock_dirty(map_.dirty_mutex_);
-        map_.merge(points, origin_mat);
-        map_.update_dirty();
-        ROS_WARN("Map bootstrapped with %i points (%lu in map).", n * n, map_.size());
+        input_map_received(cloud);
+        ROS_WARN("Map bootstrapped with %i input points (%lu in map).",
+                 n_pts, map_.size());
     }
 
     Value inline time_from_init(const double time)
@@ -516,26 +511,38 @@ public:
 
     void input_map_received(const sensor_msgs::PointCloud2& cloud)
     {
-        Timer t;
-        const size_t n_pts = cloud.height * cloud.width;
-        sensor_msgs::PointCloud2ConstIterator<Elem> it_points(cloud, position_name_);
-        sensor_msgs::PointCloud2ConstIterator<Elem> it_normals(cloud, normal_name_);
-        Buffer<Elem> points_buf(3 * n_pts);
-        Buffer<Elem> normals_buf(3 * n_pts);
-        auto it_points_dst = points_buf.begin();
-        auto it_normals_dst = normals_buf.begin();
-        for (size_t i = 0; i < n_pts; ++i, ++it_points, ++it_normals)
-        {
-            *it_points_dst++ = it_points[0];
-            *it_points_dst++ = it_points[1];
-            *it_points_dst++ = it_points[2];
-            *it_normals_dst++ = it_normals[0];
-            *it_normals_dst++ = it_normals[1];
-            *it_normals_dst++ = it_normals[2];
-        }
-        flann::Matrix<Elem> points(points_buf.begin(), n_pts, 3);
-        flann::Matrix<Elem> normals(normals_buf.begin(), n_pts, 3);
-        ROS_INFO("Copy of %lu points and normals: %.3f s.", n_pts, t.seconds_elapsed());
+//        Timer t;
+//        const size_t n_pts = cloud.height * cloud.width;
+//        sensor_msgs::PointCloud2ConstIterator<Elem> it_points(cloud, position_name_);
+//        sensor_msgs::PointCloud2ConstIterator<Elem> it_normals(cloud, normal_name_);
+//        Buffer<Elem> points_buf(3 * n_pts);
+//        Buffer<Elem> normals_buf(3 * n_pts);
+//        auto it_points_dst = points_buf.begin();
+//        auto it_normals_dst = normals_buf.begin();
+//        for (size_t i = 0; i < n_pts; ++i, ++it_points, ++it_normals)
+//        {
+//            *it_points_dst++ = it_points[0];
+//            *it_points_dst++ = it_points[1];
+//            *it_points_dst++ = it_points[2];
+//            *it_normals_dst++ = it_normals[0];
+//            *it_normals_dst++ = it_normals[1];
+//            *it_normals_dst++ = it_normals[2];
+//        }
+//        flann::Matrix<Elem> points(points_buf.begin(), n_pts, 3);
+//        flann::Matrix<Elem> normals(normals_buf.begin(), n_pts, 3);
+//        ROS_INFO("Copy of %lu points and normals: %.3f s.", n_pts, t.seconds_elapsed());
+        Lock index_lock(map_.index_mutex_);
+        Lock cloud_lock(map_.cloud_mutex_);
+        Lock dirty_lock(map_.dirty_mutex_);
+
+        map_.cloud_.clear();
+        map_.graph_.clear();
+        map_.clear_dirty();
+
+        auto points = flann_matrix_view<Value>(const_cast<sensor_msgs::PointCloud2&>(cloud), position_name_, uint32_t(3));
+        Vec3 origin_vec(0, 0, 0);
+        flann::Matrix<Value> origin(&origin_vec(0), 1, 3);
+        map_.initialize(points, origin);
     }
 
     template<typename T>
