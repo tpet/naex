@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="robot_type" default="x1"/>
+    <arg name="icp" default="point_to_plane" doc="ICP mode from {point_to_plane, point_to_point}."/>
+    <arg name="points_slow_filtered" default="points_slow_filtered"/>
+    <arg name="points_min_dist" default="0.125"/>
+
+    <group if="$(eval 'x1' in robot_type or 'x2' in robot_type)">
+        <node name="odom_setter" pkg="subt_virtual" type="odom_setter">
+            <rosparam>
+                pose_cov_diag: [.1, .1, .1, .1, .1, .1]
+                twist_cov_diag: [.1, .1, .1, .1, .1, .1]
+            </rosparam>
+            <remap from="input" to="odom"/>
+            <remap from="output" to="uncertain_odom"/>
+        </node>
+
+        <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="robot_pose_ekf">
+            <param name="output_frame" value="$(arg robot)/odom"/>
+            <!--
+            According to docs base_footprint should be used.
+            TODO: Create and use $(arg robot)/base_fooprint frame?
+            <param name="base_footprint_frame" value="$(arg robot)/base_footprint"/>
+            <param name="base_footprint_frame" value="$(arg robot)/base_link"/>
+            NB: Need to use robot frame like X1, pose publisher then publishes
+            X1->X1/base_link transform. Some robot links seems to be directly
+            below X1 frame.
+            -->
+            <param name="base_footprint_frame" value="$(arg robot)"/>
+            <param name="freq" value="20.0"/>
+            <param name="sensor_timeout" value="1.0"/>
+            <param name="odom_used" value="true"/>
+            <param name="imu_used" value="true"/>
+            <param name="vo_used" value="false"/>
+
+            <remap from="odom" to="uncertain_odom"/>
+            <remap from="imu_data" to="imu/data"/>
+            <remap from="~odom_combined" to="imu_pose"/>
+        </node>
+    </group>
+
+    <node name="dynamic_mapper" type="dynamic_mapper" pkg="ethzasl_icp_mapper" output="log">
+        <param name="subscribe_scan" value="false"/>
+        <param name="inputFiltersConfig" value="$(dirname)/dynamic_mapper/input_filters.yaml"/>
+        <param if="$(eval icp == 'point_to_plane')"
+               name="icpConfig" value="$(dirname)/dynamic_mapper/icp.yaml"/>
+        <param if="$(eval icp == 'point_to_plane_4dof')"
+               name="icpConfig" value="$(dirname)/dynamic_mapper/icp_4dof.yaml"/>
+        <param name="mapPostFiltersConfig" value="$(dirname)/dynamic_mapper/map_post_filters.yaml"/>
+
+        <param name="odom_frame" value="odom"/>
+        <param name="map_frame" value="map"/>
+        <param name="useROSLogger" value="true"/>
+        <param name="minOverlap" value="0.2" />
+        <param name="maxOverlapToMerge" value="1.0"/>
+        <param name="minReadingPointCount" value="500"/>
+        <param name="minMapPointCount" value="500"/>
+        <param name="localizing" value="true"/>
+        <param name="mapping" value="true"/>
+        <!-- Disable refreshing map-to-odom transform. -->
+        <param name="tfRefreshPeriod" value="0."/>
+        <!-- Parameters for dynamic elements -->
+        <param name="priorStatic" value="0.7"/>
+        <param name="priorDyn" value="0.3"/>
+        <param name="maxAngle" value="0.02"/>
+        <param name="eps_a" value="0.1"/>  <!--1 deg = 0.017rad-->
+        <param name="eps_d" value="0.1"/>
+        <param name="alpha" value="0.99"/>
+        <param name="beta" value="0.9"/>
+        <param name="maxDyn" value="0.50"/>
+        <param name="maxDistNewPoint" value="$(arg points_min_dist)"/>  <!-- 0.07 -->
+        <param name="sensorMaxRange" value="50.0"/>
+
+        <remap from="cloud_in" to="$(arg points_slow_filtered)"/>
+    </node>
+</launch>

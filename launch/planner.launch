@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="points_min_dist" default="0.125"/>
+    <arg name="robot_type" default="x1"/>
+
+    <node name="naex_planner" pkg="naex" type="planner"
+          respawn="true" respawn_delay="1.0" output="screen">
+
+        <!--
+             5 0.087
+            10 0.175
+            15 0.262
+            20 0.349
+            25 0.436
+            30 0.524
+            35 0.611
+            40 0.698
+            45 0.785
+        -->
+        <rosparam subst_value="true">
+            position_name: x
+            normal_name: normal_x
+            map_frame: subt
+            robot_frame: base_link
+            max_cloud_age: 5.0
+            max_pitch: 0.611
+            max_roll: 0.436
+            neighborhood_knn: 32
+            neighborhood_radius: 0.6
+            normal_radius: 0.5
+
+            max_nn_height_diff: 0.15
+            min_points_obstacle: 1
+            max_ground_diff_std: 0.06
+            max_ground_abs_diff_mean: 0.06
+            edge_min_centroid_offset: 0.4
+            min_dist_to_obstacle: 0.0
+
+            viewpoints_update_freq: 1.
+            min_vp_distance: 1.5
+            max_vp_distance: 5.
+            self_factor: 0.5
+            planning_freq: 0.5
+
+            min_num_empty: 4
+            min_empty_ratio: 2.0
+
+            points_min_dist: $(arg points_min_dist)
+            filter_robots: true
+
+            num_input_clouds: 1
+            input_queue_size: 15
+        </rosparam>
+        <rosparam if="$(eval 'x1' in robot_type.lower()" subst_value="true">
+            clearance_radius: 0.6
+            clearance_low: 0.1
+            clearance_high: 0.7
+        </rosparam>
+        <rosparam if="$(eval 'x2' in robot_type.lower()" subst_value="true">
+            clearance_radius: 0.5
+            clearance_low: 0.1
+            clearance_high: 0.5
+        </rosparam>
+
+        <!-- Services -->
+        <remap from="get_plan" to="get_plan"/>
+
+        <!-- Inputs -->
+        <remap from="input_map" to="~input_map"/>  <!-- Don't use map input. -->
+
+        <remap from="input_cloud_0" to="points_slow_filtered"/>
+
+        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+               from="input_cloud_1" to="front_rgbd/points_slow_filtered"/>
+        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+               from="input_cloud_2" to="left_rgbd/points_slow_filtered"/>
+        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+               from="input_cloud_3" to="right_rgbd/points_slow_filtered"/>
+        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+               from="input_cloud_4" to="rear_rgbd/points_slow_filtered"/>
+
+        <!-- Outputs -->
+        <!-- Collected robot viewpoints -->
+        <remap from="viewpoints" to="viewpoints"/>
+        <remap from="other_viewpoints" to="other_viewpoints"/>
+
+        <!--
+            Global and local maps: don't subscribe global if not needed,
+            use local map for visualization.
+        -->
+        <remap from="map" to="map"/>
+        <remap from="local_map" to="local_map"/>
+        <!-- Points to update (graph, features, labels) -->
+        <remap from="dirty_map" to="dirty_map"/>
+        <!-- Added / removed points -->
+        <remap from="map_diff" to="map_diff"/>
+
+        <!-- Planned path -->
+        <remap from="path" to="path"/>
+    </node>
+</launch>

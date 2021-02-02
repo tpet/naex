@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <!--
+    Slow down and filter input point clouds:
+    points -> points_slow -> points_slow_filtered.
+
+    Run adapters for TRADR and Husky:
+    dynamic_point_cloud = points_slow
+    os_cloud_node/points -> points_slow
+    -->
+    <arg name="points" default="points"/>
+    <arg name="points_slow" default="$(arg points)_slow"/>
+    <arg name="points_slow_filtered" default="$(arg points_slow)_filtered"/>
+    <arg name="points_min_dist" default="0.125"/>
+
+    <!-- TRADR adaptor -->
+    <node name="dynamic_point_cloud_relay" pkg="topic_tools" type="relay"
+          args="dynamic_point_cloud $(arg points_slow)"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+    <!-- Husky adaptor -->
+    <node name="os_points_throttle" pkg="topic_tools" type="throttle"
+          args="messages os_cloud_node/points 4.0 $(arg points_slow)"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+    <!-- Throttle and voxel filter -->
+    <node name="points_throttle" pkg="topic_tools" type="throttle"
+              args="messages $(arg points_slow) points 4.0 $(arg points_slow)"
+              respawn="true" respawn_delay="1.0" output="log"/>
+
+    <node name="points_slow_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+        <rosparam subst_value="true">
+            leaf_size: $(arg points_min_dist)
+            filter_field_name: ""
+        </rosparam>
+        <remap from="~input" to="points_slow"/>
+        <remap from="~output" to="points_slow_filtered"/>
+    </node>
+
+    <!-- SubT virtual EXPLORER_X1 RGBD sensors -->
+    <node name="front_rgbd_points_throttle" pkg="topic_tools" type="throttle"
+          args="messages front_rgbd/points 1.0 front_rgbd/points_slow"
+          respawn="true" respawn_delay="1.0" output="log"/>
+    <node name="left_rgbd_points_throttle" pkg="topic_tools" type="throttle"
+          args="messages left_rgbd/points 1.0 left_rgbd/points_slow"
+          respawn="true" respawn_delay="1.0" output="log"/>
+    <node name="right_rgbd_points_throttle" pkg="topic_tools" type="throttle"
+          args="messages right_rgbd/points 1.0 right_rgbd/points_slow"
+          respawn="true" respawn_delay="1.0" output="log"/>
+    <node name="rear_rgbd_points_throttle" pkg="topic_tools" type="throttle"
+          args="messages rear_rgbd/points 1.0 rear_rgbd/points_slow"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+    <node name="front_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+        <rosparam subst_value="true">
+            leaf_size: $(arg points_min_dist)
+            filter_field_name: ""
+        </rosparam>
+        <remap from="~input" to="front_rgbd/points_slow"/>
+        <remap from="~output" to="front_rgbd/points_slow_filtered"/>
+    </node>
+    <node name="left_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+        <rosparam subst_value="true">
+            leaf_size: $(arg points_min_dist)
+            filter_field_name: ""
+        </rosparam>
+        <remap from="~input" to="left_rgbd/points_slow"/>
+        <remap from="~output" to="left_rgbd/points_slow_filtered"/>
+    </node>
+    <node name="right_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+        <rosparam subst_value="true">
+            leaf_size: $(arg points_min_dist)
+            filter_field_name: ""
+        </rosparam>
+        <remap from="~input" to="right_rgbd/points_slow"/>
+        <remap from="~output" to="right_rgbd/points_slow_filtered"/>
+    </node>
+    <node name="rear_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+        <rosparam subst_value="true">
+            leaf_size: $(arg points_min_dist)
+            filter_field_name: ""
+        </rosparam>
+        <remap from="~input" to="rear_rgbd/points_slow"/>
+        <remap from="~output" to="rear_rgbd/points_slow_filtered"/>
+    </node>
+</launch>

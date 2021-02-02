@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="robot_type" default="x1"/>
+    <arg name="cmd_vel" default="cmd_vel"
+         doc="Topic to which to publish velocity commands."/>
+
+    <node name="path_follower" pkg="naex" type="path_follower"
+          respawn="true" respawn_delay="1.0" output="screen">
+
+        <rosparam subst_value="true">
+            map_frame: subt
+            odom_frame: odom
+            robot_frame: base_link
+            control_freq: 10.0
+            goal_reached_dist: 0.6
+            goal_reached_angle: .inf
+            use_path_theta: none
+            max_age: 1.0
+            <!--
+            Max. path distances, tail is consumed first by reached goals.
+            A higher value is used in the beginning to traverse across
+            unobserved area around robot.
+            -->
+            max_path_dist: [0.8, 2.5, 2.5, 2.5]
+            look_ahead: 0.8
+            max_speed: 1.0
+            max_force_through_speed: 0.2
+            max_angular_rate: 1.5
+            keep_path: 5.
+            keep_cloud_box: [[-3.0, 3.0], [-3.0, 3.0], [-2.0, 2.0]]
+            show_clearance_pos: [-2, 2]
+            min_points_obstacle: 3
+
+            force_through_after: 15.
+            backtrack_after: 30.
+            allow_backward: True
+        </rosparam>
+        <rosparam if="$(eval 'x1' in robot_type.lower()" subst_value="true">
+            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
+        </rosparam>
+        <rosparam if="$(eval 'x2' in robot_type.lower()" subst_value="true">
+            clearance_box: [[-0.4, 0.4], [-0.3, 0.3], [0.15, 0.5]]
+        </rosparam>
+
+        <!-- Inputs -->
+        <remap from="cloud" to="points_slow_filtered"/>
+        <remap from="path" to="path"/>
+
+        <!-- Outputs -->
+        <remap from="clearance" to="clearance"/>
+        <remap from="cmd_vel" to="$(arg cmd_vel)"/>
+    </node>
+</launch>
