@@ -12,7 +12,7 @@
             odom_frame: odom
             robot_frame: base_link
             control_freq: 10.0
-            goal_reached_dist: 0.6
+            goal_reached_dist: 0.3
             goal_reached_angle: .inf
             use_path_theta: none
             max_age: 1.0
@@ -26,7 +26,7 @@
             max_speed: 1.0
             max_force_through_speed: 0.2
             max_angular_rate: 1.5
-            keep_path: 5.
+            keep_path: 2.
             keep_cloud_box: [[-3.0, 3.0], [-3.0, 3.0], [-2.0, 2.0]]
             show_clearance_pos: [-2, 2]
             min_points_obstacle: 3

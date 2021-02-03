@@ -31,7 +31,7 @@ public:
             dirty_indices_(),
             // Parameter defaults
             points_min_dist_(0.2f),
-            min_empty_cos_(0.3f),
+            min_empty_cos_(0.259),
             // Occupancy
             min_num_empty_(2),
             min_empty_ratio_(1.0f),
@@ -50,7 +50,8 @@ public:
             max_mean_abs_ground_diff_(0.1),
             min_dist_to_obstacle_(clearance_radius_),
             max_pitch_(30. / 180. * M_PI),
-            max_roll_(30. / 180. * M_PI)
+            max_roll_(30. / 180. * M_PI),
+            inclination_penalty_(1.)
     {
 //        dirty_indices_.reser
         dirty_indices_.reserve(10000);
@@ -159,7 +160,7 @@ public:
         const Vec3 left = ConstVec3Map(cloud_[v1].normal_).cross(forward);
         Value pitch = inclination(forward);
         Value roll = inclination(left);
-        if (std::abs(pitch) >= max_pitch_ || std::abs(roll) >= max_roll_)
+        if (std::abs(pitch) > max_pitch_ || std::abs(roll) > max_roll_)
         {
             return std::numeric_limits<Cost>::infinity();
         }
@@ -189,14 +190,14 @@ public:
         // Initialize with distance computed in NN search.
         // Multiple with relative pitch and roll.
 //            d *= (1.f + (pitch0 + pitch1 + inclination) / 3.f / max_pitch_ + (roll0 + roll1) / 2.f / max_roll_);
-        c *= (Value(1) + (pitch / max_pitch_));
-        c *= (Value(1) + (roll / max_roll_));
+        c *= 1 + inclination_penalty_ * std::abs(pitch) / max_pitch_;
+        c *= 1 + inclination_penalty_ * std::abs(roll) / max_roll_;
 //            std::cout << v0 << " -> " << v1 << ": " << d << std::endl;
         // Penalize distance to obstacles and other actors.
         if (std::isfinite(cloud_[v1].dist_to_obstacle_))
         {
-            c *= Value(1) + std::max(Value(0),
-                                     Value(1) - cloud_[v1].dist_to_obstacle_ / (Value(2) * clearance_radius_));
+            c *= 1 + std::max(Value(0),
+                              1 - cloud_[v1].dist_to_obstacle_ / (2 * clearance_radius_));
         }
         // Would need current position of other actors.
 //        c *= std::isfinite(cloud_[v1].dist_to_other_actors_)
@@ -862,9 +863,10 @@ public:
         Index n_empty = 0;
         Index n_occluded = 0;
         Index n_modified = 0;
-        const Value eps = points_min_dist_ / Value(2);
+        const Value eps = points_min_dist_ / 2;
         for (const auto i: q_map.nn_[0])
         {
+            cloud_[i].dist_to_plane_ = std::numeric_limits<Value>::quiet_NaN();
             Vec3 p = map_to_cloud * ConstVec3Map(cloud_[i].position_);
             Value r, c;
             model.project(p(0), p(1), p(2), r, c);
@@ -898,9 +900,15 @@ public:
             ConstVec3Map p2(&(x_begin + i2)[0]);
             if (!std::isfinite(p2(0)) || !std::isfinite(p2(1)) || !std::isfinite(p2(2)))
                 continue;
-            Vec4 plane = plane_from_points(ConstVec3Map(&(x_begin + i0)[0]),
-                                           ConstVec3Map(&(x_begin + i1)[0]),
-                                           ConstVec3Map(&(x_begin + i2)[0]));
+            Vec4 plane = plane_from_points(p0, p1, p2);
+
+            // Check the incidence angle is not too high.
+            Vec3 n = plane.head(3);
+            const auto abs_cos = std::abs(p0.normalized().dot(n));
+//            ROS_INFO("Input cloud normal: [%.2f %.2f %.2f], cos with ray: %.2f",
+//                     n(0), n(1), n(2), abs_cos);
+            if (abs_cos < min_empty_cos_)
+                continue;
 
             // Make sure positive distance is towards sensor at [0, 0, 0],
             // i.e., outside from surface.
@@ -1461,6 +1469,7 @@ public:
     float min_dist_to_obstacle_;
     float max_pitch_;
     float max_roll_;
+    float inclination_penalty_;
 };
 
 /** https://www.boost.org/doc/libs/1_75_0/libs/graph/doc/adjacency_list.html */

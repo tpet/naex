@@ -24,7 +24,7 @@
             robot_frame: base_link
             max_cloud_age: 5.0
             max_pitch: 0.611
-            max_roll: 0.436
+            max_roll: 0.524
             neighborhood_knn: 32
             neighborhood_radius: 0.6
             normal_radius: 0.5
@@ -42,8 +42,10 @@
             self_factor: 0.5
             planning_freq: 0.5
 
-            min_num_empty: 4
-            min_empty_ratio: 2.0
+            min_num_empty: 3
+            min_empty_ratio: 1.0
+            max_occ_counter: 7
+            min_empty_cos: 0.174
 
             points_min_dist: $(arg points_min_dist)
             filter_robots: true

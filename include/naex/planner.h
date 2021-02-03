@@ -121,6 +121,8 @@ public:
         pnh_.param("max_cloud_age", max_cloud_age_, max_cloud_age_);
         pnh_.param("max_pitch", map_.max_pitch_, map_.max_pitch_);
         pnh_.param("max_roll", map_.max_roll_, map_.max_roll_);
+        pnh_.param("inclination_penalty", map_.inclination_penalty_, map_.inclination_penalty_);
+
         pnh_.param("neighborhood_radius", map_.neighborhood_radius_, map_.neighborhood_radius_);
         pnh_.param("normal_radius", normal_radius_, normal_radius_);
 
@@ -137,8 +139,8 @@ public:
         pnh_.param("num_input_clouds", num_input_clouds, num_input_clouds);
         pnh_.param("input_queue_size", queue_size_, queue_size_);
         pnh_.param("points_min_dist", map_.points_min_dist_, map_.points_min_dist_);
-        pnh_.param("min_empty_cos", map_.min_empty_cos_, map_.min_empty_cos_);
 
+        pnh_.param("min_empty_cos", map_.min_empty_cos_, map_.min_empty_cos_);
         pnh_.param("min_num_empty", map_.min_num_empty_, map_.min_num_empty_);
         pnh_.param("min_empty_ratio", map_.min_empty_ratio_, map_.min_empty_ratio_);
         pnh_.param("max_occ_counter", map_.max_occ_counter_, map_.max_occ_counter_);
