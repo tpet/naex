@@ -224,7 +224,7 @@ public:
         Eigen::Isometry3f cloud_to_map;
         try
         {
-            ros::Duration timeout(60.);
+            ros::Duration timeout(10.);
             const auto cloud_to_map_tf = tf_->lookupTransform(map_frame_, robot_frame_, now, timeout);
             cloud_to_map = tf2::transformToEigen(cloud_to_map_tf.transform).cast<float>();
         }
@@ -542,9 +542,14 @@ public:
         map_.clear_dirty();
 
         auto points = flann_matrix_view<Value>(const_cast<sensor_msgs::PointCloud2&>(cloud), position_name_, uint32_t(3));
-        Vec3 origin_vec(0, 0, 0);
-        flann::Matrix<Value> origin(&origin_vec(0), 1, 3);
+        Vec3 zero(0, 0, 0);
+        Value* origin_ptr = viewpoints_.size() >= 3
+                            ? viewpoints_.data()
+                            : &zero(0);
+        flann::Matrix<Value> origin(origin_ptr, 1, 3);
         map_.initialize(points, origin);
+        map_.update_dirty();
+        send_local_map(origin_ptr, cloud.header.stamp);
     }
 
     template<typename T>
@@ -949,9 +954,30 @@ public:
         }
     }
 
+    void send_local_map(Value* origin, const ros::Time& stamp)
+    {
+        Timer t;
+        sensor_msgs::PointCloud2 local_map;
+        local_map.header.frame_id = map_frame_;
+        local_map.header.stamp = stamp;
+        Lock lock_cloud(map_.cloud_mutex_);
+        const auto ind = map_.nearby_indices(origin, 20.);
+        map_.create_debug_cloud(ind.begin(), ind.size(), local_map);
+        local_map_pub_.publish(local_map);
+        ROS_DEBUG("Sending local cloud: %.3f s.", t.seconds_elapsed());
+    }
+
 //    void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
     void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& input)
     {
+        const auto age = (ros::Time::now() - input->header.stamp).toSec();
+        if (age > max_cloud_age_)
+        {
+            ROS_INFO("Skipping old input cloud from %s, age %.1f s > %.1f s.",
+                     input->header.frame_id.c_str(), age, max_cloud_age_);
+            return;
+        }
+
         check_initialized();
         sensor_msgs::PointCloud2 step_filtered;
         step_subsample(*input, 1024, 1024, step_filtered);
@@ -1064,16 +1090,7 @@ public:
 
         if (local_map_pub_.getNumSubscribers() > 0)
         {
-            Timer t_local;
-            sensor_msgs::PointCloud2 local_map;
-            local_map.header.frame_id = map_frame_;
-            local_map.header.stamp = cloud->header.stamp;
-            Lock lock_cloud(map_.cloud_mutex_);
-//                const auto ind = map_.nearby_indices(origin_mat, 20.);
-            const auto ind = map_.nearby_indices(origin.data(), 20.);
-            map_.create_debug_cloud(ind.begin(), ind.size(), local_map);
-            local_map_pub_.publish(local_map);
-            ROS_DEBUG("Sending local cloud: %.3f s.", t_local.seconds_elapsed());
+            send_local_map(origin.data(), cloud->header.stamp);
         }
 
         if (map_pub_.getNumSubscribers() > 0)

@@ -11,6 +11,6 @@ int main (int argc, char *argv[])
     ros::NodeHandle nh, pnh("~");
     naex::Planner planner(nh, pnh);
 //    ros::spin();
-    ros::MultiThreadedSpinner spinner(4);
+    ros::MultiThreadedSpinner spinner(8);
     spinner.spin();
 }

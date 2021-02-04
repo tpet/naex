@@ -164,41 +164,17 @@ public:
         {
             return std::numeric_limits<Cost>::infinity();
         }
-//        Elem height_diff = cloud_[v1].position_[2] - cloud_[v0].position_[2];
-//        Elem pitch = std::asin(std::abs(height_diff) / c);
-//        Elem pitch = std::asin(height_diff / c);
-//        if (std::abs(pitch) > max_pitch_)
-//        {
-//            return std::numeric_limits<Cost>::infinity();
-//        }
-//        Vec3 y = ConstVec3(cloud_[v0].position_)
-
-        /*
-        Elem pitch0 = std::acos(normals_[v0][2]);
-        if (pitch0 > max_pitch_)
-        {
-            return std::numeric_limits<Cost>::infinity();
-        }
-        Elem pitch1 = std::acos(normals_[v1][2]);
-        if (pitch1 > max_pitch_)
-        {
-            return std::numeric_limits<Cost>::infinity();
-        }
-        float roll0 = 0.f;
-        float roll1 = 0.f;
-        */
         // Initialize with distance computed in NN search.
         // Multiple with relative pitch and roll.
-//            d *= (1.f + (pitch0 + pitch1 + inclination) / 3.f / max_pitch_ + (roll0 + roll1) / 2.f / max_roll_);
         c *= 1 + inclination_penalty_ * std::abs(pitch) / max_pitch_;
         c *= 1 + inclination_penalty_ * std::abs(roll) / max_roll_;
-//            std::cout << v0 << " -> " << v1 << ": " << d << std::endl;
         // Penalize distance to obstacles and other actors.
         if (std::isfinite(cloud_[v1].dist_to_obstacle_))
         {
             c *= 1 + std::max(Value(0),
                               1 - cloud_[v1].dist_to_obstacle_ / (2 * clearance_radius_));
         }
+        // TODO: Add soft margins around other actors.
         // Would need current position of other actors.
 //        c *= std::isfinite(cloud_[v1].dist_to_other_actors_)
 //                ? std::max(0.f, 1. - cloud_[v1].dist_to_other_actors_ / (2. * clearance_radius_))
@@ -206,11 +182,6 @@ public:
         // TODO: Make distance correspond to expected travel time.
         return c;
     }
-
-//    Cost edge_cost(Index e)
-//    {
-//        return 0.f;
-//    }
 
     void update_index()
     {

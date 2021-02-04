@@ -25,8 +25,8 @@
 
     <!-- Throttle and voxel filter -->
     <node name="points_throttle" pkg="topic_tools" type="throttle"
-              args="messages $(arg points_slow) points 4.0 $(arg points_slow)"
-              respawn="true" respawn_delay="1.0" output="log"/>
+          args="messages $(arg points) 4.0 $(arg points_slow)"
+          respawn="true" respawn_delay="1.0" output="log"/>
 
     <node name="points_slow_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
         <rosparam subst_value="true">
