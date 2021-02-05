@@ -873,14 +873,6 @@ public:
                 continue;
             Vec4 plane = plane_from_points(p0, p1, p2);
 
-            // Check the incidence angle is not too high.
-            Vec3 n = plane.head(3);
-            const auto abs_cos = std::abs(p0.normalized().dot(n));
-//            ROS_INFO("Input cloud normal: [%.2f %.2f %.2f], cos with ray: %.2f",
-//                     n(0), n(1), n(2), abs_cos);
-            if (abs_cos < min_empty_cos_)
-                continue;
-
             // Make sure positive distance is towards sensor at [0, 0, 0],
             // i.e., outside from surface.
             if (plane(3) < 0.)
@@ -913,7 +905,15 @@ public:
             {
                 // Known surface seen through,
                 // indicating it may be noise or it moved somewhere else.
-//                if (cloud_[i].num_empty_ == std::numeric_limits<decltype(cloud_[i].num_empty_)>::max())
+
+                // Check the incidence angle is not too high.
+                Vec3 n = plane.head(3);
+                const auto abs_cos = std::abs(p0.normalized().dot(n));
+                if (abs_cos < min_empty_cos_)
+                {
+                    continue;
+                }
+
                 if (cloud_[i].num_empty_ >= max_occ_counter_)
                 {
                     cloud_[i].num_occupied_ /= 2;
