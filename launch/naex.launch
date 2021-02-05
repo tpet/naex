@@ -5,6 +5,7 @@
     <arg name="robot_type" default="x1"/>
     <arg name="points_min_dist" default="0.125"/>
 
+    <include file="$(dirname)/tf.launch" pass_all_args="true"/>
     <include file="$(dirname)/preproc.launch" pass_all_args="true"/>
     <include file="$(dirname)/slam.launch" pass_all_args="true"/>
     <include file="$(dirname)/planner.launch" pass_all_args="true"/>

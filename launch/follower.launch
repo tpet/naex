@@ -11,7 +11,7 @@
         <rosparam subst_value="true">
             map_frame: subt
             odom_frame: $(arg robot)/odom
-            robot_frame: $(arg robot)/base_link
+            robot_frame: $(arg robot)/base_footprint
             control_freq: 10.0
             goal_reached_dist: 0.3
             goal_reached_angle: .inf
@@ -27,7 +27,7 @@
             max_speed: 1.0
             max_force_through_speed: 0.2
             max_angular_rate: 1.5
-            keep_path: 2.
+            keep_path: 3.
             keep_cloud_box: [[-3.0, 3.0], [-3.0, 3.0], [-2.0, 2.0]]
             show_clearance_pos: [-2, 2]
             min_points_obstacle: 3
