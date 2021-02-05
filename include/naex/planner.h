@@ -55,24 +55,27 @@ public:
         tf_(),
         position_name_("x"),
         normal_name_("normal_x"),
-        map_frame_(""),
+        map_frame_("map"),
         robot_frame_("base_footprint"),
         robot_frames_(),
-        max_cloud_age_(5.0),
+        max_cloud_age_(5.),
+        input_range_(10.),
         filter_robots_(false),
         neighborhood_knn_(12),
         neighborhood_radius_(.5),
-        normal_radius_(0.5),
-        viewpoints_update_freq_(1.0),
+        normal_radius_(.5),
+        viewpoints_update_freq_(1.),
         viewpoints_(),
         other_viewpoints_(),
         min_vp_distance_(1.5),
-        max_vp_distance_(5.0),
-        self_factor_(0.25),
-        path_cost_pow_(0.75),
-        planning_freq_(0.5),
+        max_vp_distance_(5.),
+        self_factor_(.25),
+        path_cost_pow_(.75),
+        planning_freq_(.5),
         random_start_(false),
+        bootstrap_z_(0.),
         initialized_(false),
+        time_initialized_(std::numeric_limits<double>::quiet_NaN()),
         queue_size_(5),
         map_()
     {
@@ -119,6 +122,7 @@ public:
         pnh_.param("robot_frame", robot_frame_, robot_frame_);
         pnh_.param("robot_frames", robot_frames_, robot_frames_);
         pnh_.param("max_cloud_age", max_cloud_age_, max_cloud_age_);
+        pnh_.param("input_range", input_range_, input_range_);
         pnh_.param("max_pitch", map_.max_pitch_, map_.max_pitch_);
         pnh_.param("max_roll", map_.max_roll_, map_.max_roll_);
         pnh_.param("inclination_penalty", map_.inclination_penalty_, map_.inclination_penalty_);
@@ -134,6 +138,8 @@ public:
         pnh_.param("self_factor", self_factor_, self_factor_);
         pnh_.param("path_cost_pow", path_cost_pow_, path_cost_pow_);
         pnh_.param("planning_freq", planning_freq_, planning_freq_);
+        pnh_.param("random_start", random_start_, random_start_);
+        pnh_.param("bootstrap_z", bootstrap_z_, bootstrap_z_);
 
         int num_input_clouds = 1;
         pnh_.param("num_input_clouds", num_input_clouds, num_input_clouds);
@@ -220,12 +226,13 @@ public:
         int n = int(4 * map_.clearance_radius_ / map_.points_min_dist_ + 1);
         int n_pts = n * n;
         auto now = ros::Time::now();
+        auto latest = ros::Time(0);
 
         Eigen::Isometry3f cloud_to_map;
         try
         {
-            ros::Duration timeout(10.);
-            const auto cloud_to_map_tf = tf_->lookupTransform(map_frame_, robot_frame_, now, timeout);
+            ros::Duration timeout(15.);
+            const auto cloud_to_map_tf = tf_->lookupTransform(map_frame_, robot_frame_, latest, timeout);
             cloud_to_map = tf2::transformToEigen(cloud_to_map_tf.transform).cast<float>();
         }
         catch (const tf2::TransformException& ex)
@@ -255,7 +262,7 @@ public:
             {
                 Vec3 x_cloud((-n / 2 + i) * map_.points_min_dist_,
                              (-n / 2 + j) * map_.points_min_dist_,
-                             0);
+                             bootstrap_z_);
                 Vec3 x_map = cloud_to_map * x_cloud;
                 pt[0] = x_map(0);
                 pt[1] = x_map(1);
@@ -1035,7 +1042,7 @@ public:
         {
             ConstVec3Map src(&it_points[0]);
             Value range = src.norm();
-            if (range < 1.f || range > 25.f)
+            if (range < 1.f || range > input_range_)
             {
                 continue;
             }
@@ -1139,6 +1146,7 @@ protected:
     std::string robot_frame_;
     std::map<std::string, std::string> robot_frames_;
     float max_cloud_age_;
+    float input_range_;
     bool filter_robots_;
 
     int neighborhood_knn_;
@@ -1157,7 +1165,8 @@ protected:
     float planning_freq_;
     // Randomize starting vertex within tolerance radius.
     bool random_start_;
-
+    // Z offset for bootstrap map height
+    float bootstrap_z_;
     Mutex initialized_mutex_;
     bool initialized_;
     double time_initialized_;

@@ -28,7 +28,7 @@
           args="messages $(arg points) 4.0 $(arg points_slow)"
           respawn="true" respawn_delay="1.0" output="log"/>
 
-    <node name="points_slow_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+    <node name="points_slow_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
         <rosparam subst_value="true">
             leaf_size: $(arg points_min_dist)
             filter_field_name: ""
@@ -51,7 +51,7 @@
           args="messages rear_rgbd/points 1.0 rear_rgbd/points_slow"
           respawn="true" respawn_delay="1.0" output="log"/>
 
-    <node name="front_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+    <node name="front_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
         <rosparam subst_value="true">
             leaf_size: $(arg points_min_dist)
             filter_field_name: ""
@@ -59,7 +59,7 @@
         <remap from="~input" to="front_rgbd/points_slow"/>
         <remap from="~output" to="front_rgbd/points_slow_filtered"/>
     </node>
-    <node name="left_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+    <node name="left_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
         <rosparam subst_value="true">
             leaf_size: $(arg points_min_dist)
             filter_field_name: ""
@@ -67,7 +67,7 @@
         <remap from="~input" to="left_rgbd/points_slow"/>
         <remap from="~output" to="left_rgbd/points_slow_filtered"/>
     </node>
-    <node name="right_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+    <node name="right_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
         <rosparam subst_value="true">
             leaf_size: $(arg points_min_dist)
             filter_field_name: ""
@@ -75,7 +75,7 @@
         <remap from="~input" to="right_rgbd/points_slow"/>
         <remap from="~output" to="right_rgbd/points_slow_filtered"/>
     </node>
-    <node name="rear_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="screen">
+    <node name="rear_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
         <rosparam subst_value="true">
             leaf_size: $(arg points_min_dist)
             filter_field_name: ""

@@ -25,6 +25,7 @@
             map_frame: subt
             robot_frame: $(arg robot)/base_link
             max_cloud_age: 2.0
+            input_range: 10.0
             max_pitch: 0.611
             max_roll: 0.524
             neighborhood_knn: 32
@@ -43,11 +44,12 @@
             max_vp_distance: 5.
             self_factor: 0.5
             planning_freq: 0.5
+            random_start: false
 
-            min_num_empty: 3
-            min_empty_ratio: 1.0
+            min_num_empty: 4
+            min_empty_ratio: 2.0
             max_occ_counter: 7
-            min_empty_cos: 0.174
+            min_empty_cos: 0.216
 
             points_min_dist: $(arg points_min_dist)
             filter_robots: true
@@ -62,6 +64,8 @@
             clearance_radius: 0.6
             clearance_low: 0.1
             clearance_high: 0.7
+            bootstrap_z: -0.14
+            num_input_clouds: 5
         </rosparam>
         <rosparam if="$(eval 'x2' in robot_type.lower())" subst_value="true">
             clearance_radius: 0.5
@@ -77,6 +81,7 @@
 
         <remap from="input_cloud_0" to="$(arg points_slow)"/>
 
+        <!--
         <remap if="$(eval 'explorer_x1' in robot_type.lower())"
                from="input_cloud_1" to="front_rgbd/points_slow_filtered"/>
         <remap if="$(eval 'explorer_x1' in robot_type.lower())"
@@ -85,6 +90,15 @@
                from="input_cloud_3" to="right_rgbd/points_slow_filtered"/>
         <remap if="$(eval 'explorer_x1' in robot_type.lower())"
                from="input_cloud_4" to="rear_rgbd/points_slow_filtered"/>
+        -->
+        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+               from="input_cloud_1" to="front_rgbd/points_slow"/>
+        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+               from="input_cloud_2" to="left_rgbd/points_slow"/>
+        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+               from="input_cloud_3" to="right_rgbd/points_slow"/>
+        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+               from="input_cloud_4" to="rear_rgbd/points_slow"/>
 
         <!-- Outputs -->
         <!-- Collected robot viewpoints -->
