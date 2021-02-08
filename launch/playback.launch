@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="wd" default=""/>
+    <arg name="bags"/>
+    <arg name="rate" default="10."/>
+    <arg name="config" default="$(dirname)/playback_virtual.rviz"/>
+
+    <param name="use_sim_time" value="true"/>
+
+    <node name="rosbag_play" pkg="rosbag" type="play"
+          args="--clock -r $(arg rate) $(arg bags)">
+
+        <remap from="/robot_data/tf" to="/tf"/>
+        <remap from="/robot_data/tf_static" to="/tf_static"/>
+    </node>
+
+    <node name="x1_draco_to_raw" pkg="point_cloud_transport" type="republish"
+          args="draco in:=/robot_data/X1/points_slow_filtered_planner
+                raw out:=/robot_data/X1/points_slow_filtered_planner"/>
+    <node name="x2_draco_to_raw" pkg="point_cloud_transport" type="republish"
+          args="draco in:=/robot_data/X2/points_slow_filtered_planner
+                raw out:=/robot_data/X2/points_slow_filtered_planner"/>
+    <node name="x3_draco_to_raw" pkg="point_cloud_transport" type="republish"
+          args="draco in:=/robot_data/X3/points_slow_filtered_planner
+                raw out:=/robot_data/X3/points_slow_filtered_planner"/>
+
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg config)"/>
+</launch>
