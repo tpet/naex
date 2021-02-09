@@ -80,6 +80,10 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: false
+        TEAMBASE:
+          Value: true
+        TEAMBASE/link:
+          Value: false
         X1:
           Value: true
         X1/base_link:
@@ -107,17 +111,27 @@ Visualization Manager:
         X1/breadcrumb_0:
           Value: false
         X1/breadcrumb_1:
-          Value: true
+          Value: false
+        X1/breadcrumb_10:
+          Value: false
+        X1/breadcrumb_11:
+          Value: false
         X1/breadcrumb_2:
-          Value: true
+          Value: false
         X1/breadcrumb_3:
-          Value: true
+          Value: false
         X1/breadcrumb_4:
-          Value: true
+          Value: false
         X1/breadcrumb_5:
-          Value: true
+          Value: false
         X1/breadcrumb_6:
-          Value: true
+          Value: false
+        X1/breadcrumb_7:
+          Value: false
+        X1/breadcrumb_8:
+          Value: false
+        X1/breadcrumb_9:
+          Value: false
         X1/front_left_wheel_link:
           Value: false
         X1/front_right_wheel_link:
@@ -129,6 +143,8 @@ Visualization Manager:
         X1/rear_left_wheel_link:
           Value: false
         X1/rear_right_wheel_link:
+          Value: false
+        X1_ground_truth:
           Value: false
         X2:
           Value: true
@@ -158,24 +174,12 @@ Visualization Manager:
           Value: false
         X2/breadcrumb_1:
           Value: false
-        X2/breadcrumb_10:
-          Value: true
         X2/breadcrumb_2:
           Value: false
         X2/breadcrumb_3:
-          Value: true
+          Value: false
         X2/breadcrumb_4:
-          Value: true
-        X2/breadcrumb_5:
-          Value: true
-        X2/breadcrumb_6:
-          Value: true
-        X2/breadcrumb_7:
-          Value: true
-        X2/breadcrumb_8:
-          Value: true
-        X2/breadcrumb_9:
-          Value: true
+          Value: false
         X2/front_left_wheel_link:
           Value: false
         X2/front_right_wheel_link:
@@ -187,6 +191,8 @@ Visualization Manager:
         X2/rear_left_wheel_link:
           Value: false
         X2/rear_right_wheel_link:
+          Value: false
+        X2_ground_truth:
           Value: false
         X3:
           Value: true
@@ -212,6 +218,12 @@ Visualization Manager:
           Value: false
         X3/base_link/right_realsense_optical:
           Value: false
+        X3/breadcrumb_0:
+          Value: false
+        X3/breadcrumb_1:
+          Value: false
+        X3/breadcrumb_2:
+          Value: false
         X3/front_left_wheel_link:
           Value: false
         X3/front_right_wheel_link:
@@ -224,16 +236,18 @@ Visualization Manager:
           Value: false
         X3/rear_right_wheel_link:
           Value: false
+        X3_ground_truth:
+          Value: false
         cave_circuit_06:
           Value: false
         subt:
           Value: true
         uav2/base_link:
-          Value: false
+          Value: true
         uav4/base_link:
-          Value: false
+          Value: true
         uav5/base_link:
-          Value: false
+          Value: true
         world:
           Value: false
       Marker Scale: 50
@@ -242,122 +256,146 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        subt:
-          X1/breadcrumb_0:
+        world:
+          X1_ground_truth:
             {}
-          X1/breadcrumb_1:
+          X2_ground_truth:
             {}
-          X1/breadcrumb_2:
+          X3_ground_truth:
             {}
-          X1/breadcrumb_3:
+          cave_circuit_06:
             {}
-          X1/breadcrumb_4:
-            {}
-          X1/breadcrumb_5:
-            {}
-          X1/breadcrumb_6:
-            {}
-          X1/map:
-            X1/odom:
-              X1:
-                X1/base_link:
-                  X1/base_link/front_laser:
-                    {}
-                  X1/base_link/front_realsense:
-                    {}
-                  X1/base_link/imu_sensor:
-                    {}
-                  X1/base_link/left_realsense:
-                    {}
-                  X1/base_link/rear_realsense:
-                    {}
-                  X1/base_link/right_realsense:
-                    {}
-                X1/front_left_wheel_link:
-                  {}
-                X1/front_right_wheel_link:
-                  {}
-                X1/rear_left_wheel_link:
-                  {}
-                X1/rear_right_wheel_link:
-                  {}
-          X2/breadcrumb_0:
-            {}
-          X2/breadcrumb_1:
-            {}
-          X2/breadcrumb_10:
-            {}
-          X2/breadcrumb_2:
-            {}
-          X2/breadcrumb_3:
-            {}
-          X2/breadcrumb_4:
-            {}
-          X2/breadcrumb_5:
-            {}
-          X2/breadcrumb_6:
-            {}
-          X2/breadcrumb_7:
-            {}
-          X2/breadcrumb_8:
-            {}
-          X2/breadcrumb_9:
-            {}
-          X2/map:
-            X2/odom:
-              X2:
-                X2/base_link:
-                  X2/base_link/front_laser:
-                    {}
-                  X2/base_link/front_realsense:
-                    {}
-                  X2/base_link/imu_sensor:
-                    {}
-                  X2/base_link/left_realsense:
-                    {}
-                  X2/base_link/rear_realsense:
-                    {}
-                  X2/base_link/right_realsense:
-                    X2/base_link/right_realsense_optical:
+          subt:
+            X1/breadcrumb_0:
+              {}
+            X1/breadcrumb_1:
+              {}
+            X1/breadcrumb_10:
+              {}
+            X1/breadcrumb_11:
+              {}
+            X1/breadcrumb_2:
+              {}
+            X1/breadcrumb_3:
+              {}
+            X1/breadcrumb_4:
+              {}
+            X1/breadcrumb_5:
+              {}
+            X1/breadcrumb_6:
+              {}
+            X1/breadcrumb_7:
+              {}
+            X1/breadcrumb_8:
+              {}
+            X1/breadcrumb_9:
+              {}
+            X1/map:
+              X1/odom:
+                X1:
+                  X1/base_link:
+                    X1/base_link/front_laser:
                       {}
-                X2/front_left_wheel_link:
-                  {}
-                X2/front_right_wheel_link:
-                  {}
-                X2/rear_left_wheel_link:
-                  {}
-                X2/rear_right_wheel_link:
-                  {}
-          X3/map:
-            X3/odom:
-              X3:
-                X3/base_link:
-                  X3/base_link/front_laser:
+                    X1/base_link/front_realsense:
+                      X1/base_link/front_realsense_optical:
+                        {}
+                    X1/base_link/imu_sensor:
+                      {}
+                    X1/base_link/left_realsense:
+                      X1/base_link/left_realsense_optical:
+                        {}
+                    X1/base_link/rear_realsense:
+                      X1/base_link/rear_realsense_optical:
+                        {}
+                    X1/base_link/right_realsense:
+                      X1/base_link/right_realsense_optical:
+                        {}
+                  X1/front_left_wheel_link:
                     {}
-                  X3/base_link/front_realsense:
+                  X1/front_right_wheel_link:
                     {}
-                  X3/base_link/imu_sensor:
+                  X1/rear_left_wheel_link:
                     {}
-                  X3/base_link/left_realsense:
+                  X1/rear_right_wheel_link:
                     {}
-                  X3/base_link/rear_realsense:
+            X2/breadcrumb_0:
+              {}
+            X2/breadcrumb_1:
+              {}
+            X2/breadcrumb_2:
+              {}
+            X2/breadcrumb_3:
+              {}
+            X2/breadcrumb_4:
+              {}
+            X2/map:
+              X2/odom:
+                X2:
+                  X2/base_link:
+                    X2/base_link/front_laser:
+                      {}
+                    X2/base_link/front_realsense:
+                      X2/base_link/front_realsense_optical:
+                        {}
+                    X2/base_link/imu_sensor:
+                      {}
+                    X2/base_link/left_realsense:
+                      X2/base_link/left_realsense_optical:
+                        {}
+                    X2/base_link/rear_realsense:
+                      X2/base_link/rear_realsense_optical:
+                        {}
+                    X2/base_link/right_realsense:
+                      X2/base_link/right_realsense_optical:
+                        {}
+                  X2/front_left_wheel_link:
                     {}
-                  X3/base_link/right_realsense:
+                  X2/front_right_wheel_link:
                     {}
-                X3/front_left_wheel_link:
-                  {}
-                X3/front_right_wheel_link:
-                  {}
-                X3/rear_left_wheel_link:
-                  {}
-                X3/rear_right_wheel_link:
-                  {}
-          uav2/base_link:
-            {}
-          uav4/base_link:
-            {}
-          uav5/base_link:
-            {}
+                  X2/rear_left_wheel_link:
+                    {}
+                  X2/rear_right_wheel_link:
+                    {}
+            X3/breadcrumb_0:
+              {}
+            X3/breadcrumb_1:
+              {}
+            X3/breadcrumb_2:
+              {}
+            X3/map:
+              X3/odom:
+                X3:
+                  X3/base_link:
+                    X3/base_link/front_laser:
+                      {}
+                    X3/base_link/front_realsense:
+                      X3/base_link/front_realsense_optical:
+                        {}
+                    X3/base_link/imu_sensor:
+                      {}
+                    X3/base_link/left_realsense:
+                      X3/base_link/left_realsense_optical:
+                        {}
+                    X3/base_link/rear_realsense:
+                      X3/base_link/rear_realsense_optical:
+                        {}
+                    X3/base_link/right_realsense:
+                      X3/base_link/right_realsense_optical:
+                        {}
+                  X3/front_left_wheel_link:
+                    {}
+                  X3/front_right_wheel_link:
+                    {}
+                  X3/rear_left_wheel_link:
+                    {}
+                  X3/rear_right_wheel_link:
+                    {}
+            uav2/base_link:
+              {}
+            uav4/base_link:
+              {}
+            uav5/base_link:
+              {}
       Update Interval: 0
       Value: true
     - Class: rviz/Image
@@ -677,6 +715,75 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 0; 255; 255
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.25
+      Name: UAV2 path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /robot_data/uav2/aloam/path/throttled
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 255; 0; 255
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.25
+      Name: UAV4 path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /robot_data/uav4/aloam/path/throttled
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 255; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.25
+      Name: UAV5 path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /robot_data/uav5/aloam/path/throttled
+      Unreliable: false
       Value: true
   Enabled: true
   Global Options:

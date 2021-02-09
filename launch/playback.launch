@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
-    <arg name="wd" default=""/>
-    <arg name="bags"/>
+    <!--
+    Usage in directory with bag files:
+    bags=$(ls $(pwd)/*bag) roslaunch naex playback.launch rate:=20
+    bags=$(ls $(pwd)/*bag) ws=~/workspace/cras_subt/devel simg ros roslaunch naex playback.launch rate:=20
+    -->
+    <arg name="bags" default="$(optenv bags)"/>
     <arg name="rate" default="10."/>
     <arg name="config" default="$(dirname)/playback_virtual.rviz"/>
 
