@@ -84,14 +84,14 @@ enum Flags
     // A static point, not dynamic or empty, necessary for being traversable.
     STATIC      = 1 << 1,
     // Approximately horizontal orientation based on normal direction,
-    // necessary for being traversable.
+    // necessary condition for being traversable.
     HORIZONTAL  = 1 << 2,
-    // Traversable based on terrain roughness and obstacles in neighborhood.
-    TRAVERSABLE = 1 << 3,
+    // Near another actor.
+    ACTOR       = 1 << 3,
     // A point at the edge, i.e. a frontier.
     EDGE        = 1 << 4,
-    // Near an other actor.
-    ACTOR       = 1 << 5,
+    // Traversable based on terrain roughness and obstacles in neighborhood.
+    TRAVERSABLE = 1 << 5
 };
 
 //    }
