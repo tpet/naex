@@ -128,6 +128,7 @@ public:
             num_occupied_(0),
             dist_to_plane_(std::numeric_limits<Value>::quiet_NaN()),
             num_obstacle_pts_(0),
+            num_obstacle_neighbors_(0),
             num_edge_neighbors_(0),
             path_cost_(std::numeric_limits<Value>::quiet_NaN()),
             reward_(std::numeric_limits<Value>::quiet_NaN()),
@@ -166,8 +167,10 @@ public:
     uint8_t num_empty_;
     uint8_t num_occupied_;
     Value dist_to_plane_;
-    // Number of obstacles nearby.
+    // Number of obstacle points in clearance cylinder.
     uint8_t num_obstacle_pts_;
+    // Number of obstacles nearby.
+    uint8_t num_obstacle_neighbors_;
     // Edge flag.
 //    uint8_t edge_;
     // Number of edge points nearby.

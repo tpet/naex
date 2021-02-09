@@ -54,6 +54,7 @@ public:
             inclination_penalty_(1.)
     {
 //        dirty_indices_.reser
+        updated_indices_.reserve(10000);
         dirty_indices_.reserve(10000);
         cloud_.reserve(DEFAULT_CAPACITY);
         graph_.reserve(DEFAULT_CAPACITY);
@@ -144,13 +145,14 @@ public:
         const auto v1 = target(e);
 //            if (labels_[v0] != TRAVERSABLE || labels_[v1] != TRAVERSABLE)
 //        if (cloud_[v1].functional_label_ != TRAVERSABLE)
-        if (!(cloud_[v1].flags_ & TRAVERSABLE) || cloud_[v1].flags_ & EDGE)
+        if (!(cloud_[v1].flags_ & TRAVERSABLE) || (cloud_[v1].flags_ & EDGE))
         {
             return std::numeric_limits<Cost>::infinity();
         }
 //        Cost d = std::sqrt(cloud_[v0].distances_[v1_index]);
         Cost c = graph_[v0].distances_[v1_index];
-        if (c > clearance_radius_)
+//        if (c > clearance_radius_)
+        if (c > 2 * points_min_dist_)
         {
             return std::numeric_limits<Cost>::infinity();
         }
@@ -174,6 +176,9 @@ public:
             c *= 1 + std::max(Value(0),
                               1 - cloud_[v1].dist_to_obstacle_ / (2 * clearance_radius_));
         }
+        // Penalize by edge and obstacles points nearby.
+        c *= 1 + Value(cloud_[v1].num_edge_neighbors_) / Neighborhood::K_NEIGHBORS;
+        c *= 1 + Value(cloud_[v1].num_obstacle_neighbors_) / Neighborhood::K_NEIGHBORS;
         // TODO: Add soft margins around other actors.
         // Would need current position of other actors.
 //        c *= std::isfinite(cloud_[v1].dist_to_other_actors_)
@@ -189,7 +194,8 @@ public:
         // TODO: Update only dirty points.
         if (!empty())
         {
-            Lock lock(index_mutex_);
+            Lock cloud_lock(cloud_mutex_);
+            Lock index_lock(index_mutex_);
 //                index_ = std::make_shared<flann::Index<flann::L2_3D<Elem>>>(points_, flann::KDTreeSingleIndexParams());
             index_ = std::make_shared<flann::Index<flann::L2_3D<Value>>>(
                     position_matrix(),
@@ -259,7 +265,8 @@ public:
         params.max_neighbors = Neighborhood::K_NEIGHBORS;
         params.sorted = true;
         {
-            Lock lock(index_mutex_);
+            Lock cloud_lock(cloud_mutex_);
+            Lock index_lock(index_mutex_);
             index_->knnSearch(positions, neighbors, distances,
                               Neighborhood::K_NEIGHBORS, params);
             // FIXME: Radius search with max K seems to result in errors.
@@ -349,6 +356,14 @@ public:
 //                  dirty_indices_.size(), t_part.seconds_elapsed());
 
         ROS_DEBUG("%lu points updated (%.3f s).", dirty_indices_.size(), t.seconds_elapsed());
+    }
+
+    void clear_updated()
+    {
+        Lock lock(updated_mutex_);
+        const auto n = updated_indices_.size();
+        updated_indices_.clear();
+        ROS_DEBUG("%lu updated indices cleared.", n);
     }
 
     void clear_dirty()
@@ -484,6 +499,7 @@ public:
 
             // Count edge neighbors (must run in the second pass).
             cloud_[v0].num_edge_neighbors_ = 0;
+            cloud_[v0].num_obstacle_neighbors_ = 0;
             // Compute ground features (need second loop through neighbors).
             cloud_[v0].min_ground_diff_ = std::numeric_limits<Elem>::infinity();
             cloud_[v0].max_ground_diff_ = -std::numeric_limits<Elem>::infinity();
@@ -495,8 +511,9 @@ public:
 
             for (Vertex j = 0; j < Neighborhood::K_NEIGHBORS; ++j)
             {
+                const auto v1 = graph_[v0].neighbors_[j];
                 // Disregard invalid neighbors.
-                if (!valid_neighbor(graph_[v0].neighbors_[j], graph_[v0].distances_[j]))
+                if (!valid_neighbor(v1, graph_[v0].distances_[j]))
                 {
                     continue;
                 }
@@ -506,7 +523,6 @@ public:
                     continue;
                 }
 
-                const auto v1 = graph_[v0].neighbors_[j];
                 // Disregard empty points.
                 if (!(cloud_[v1].flags_ & STATIC))
                 {
@@ -516,6 +532,11 @@ public:
                 if (cloud_[v1].flags_ & EDGE)
                 {
                     ++cloud_[v0].num_edge_neighbors_;
+                }
+
+                if (!(cloud_[v1].flags_ & HORIZONTAL))
+                {
+                    ++cloud_[v0].num_obstacle_neighbors_;
                 }
 
                 // Avoid driving near obstacles.
@@ -584,7 +605,8 @@ public:
 //    std::vector<Index> nearby_indices(const flann::Matrix<Value>& origin, Value radius)
     std::vector<Index> nearby_indices(Value* origin, Value radius)
     {
-        Lock lock(index_mutex_);
+        Lock cloud_lock(cloud_mutex_);
+        Lock index_lock(index_mutex_);
         RadiusQuery<Value> q(*index_, flann::Matrix<Value>(origin, 1, 3), radius);
         // TODO: Is this enough to move it?
         return q.nn_[0];
@@ -632,8 +654,8 @@ public:
         ROS_INFO("%lu sensor rays and index created (%.6f s).", n_pts, t_part.seconds_elapsed());
 
         // Find closest map points to sensor origin.
-        Lock index_lock(index_mutex_);
         Lock cloud_lock(cloud_mutex_);
+        Lock index_lock(index_mutex_);
         Lock dirty_lock(dirty_mutex_);
         t_part.reset();
         Vec3 origin = cloud_to_map.translation();
@@ -821,14 +843,15 @@ public:
         Eigen::Isometry3f map_to_cloud = cloud_to_map.inverse(Eigen::Isometry);
 
         // Find closest map points to sensor origin.
-        Lock index_lock(index_mutex_);
         Lock cloud_lock(cloud_mutex_);
-        Lock dirty_lock(dirty_mutex_);
+        Lock index_lock(index_mutex_);
         t_part.reset();
         Vec3 origin = cloud_to_map.translation();
         RadiusQuery<Value> q_map(*index_, FlannMat(origin.data(), 1, 3), 5.f);
         ROS_DEBUG("%lu closest map points found (%.6f s).", q_map.nn_[0].size(), t_part.seconds_elapsed());
 
+        Lock removed_lock(updated_mutex_);
+        Lock dirty_lock(dirty_mutex_);
         // Test each map point nearby, whether we can see through.
         Index n_occupied = 0;
         Index n_empty = 0;
@@ -929,10 +952,10 @@ public:
                 if (cloud_[i].flags_ & STATIC)
                 {
                     cloud_[i].flags_ &= ~STATIC;
-                    // Change position to NaN to remove it from visualization.
-                    cloud_[i].position_[0] = std::numeric_limits<Value>::quiet_NaN();
-                    cloud_[i].position_[1] = std::numeric_limits<Value>::quiet_NaN();
-                    cloud_[i].position_[2] = std::numeric_limits<Value>::quiet_NaN();
+                    // TODO: Change position to NaN to remove it from visualization?
+//                    cloud_[i].position_[0] = std::numeric_limits<Value>::quiet_NaN();
+//                    cloud_[i].position_[1] = std::numeric_limits<Value>::quiet_NaN();
+//                    cloud_[i].position_[2] = std::numeric_limits<Value>::quiet_NaN();
                     // Don't update the point we remove.
                     dirty_indices_.erase(i);
                     // TODO: Add neighborhood to dirty.
@@ -946,33 +969,34 @@ public:
                         dirty_indices_.insert(j);
                     }
                     index_->removePoint(i);
+                    updated_indices_.push_back(i);
                     ++n_modified;
                 }
             }
-            else
-            {
-                if (!(cloud_[i].flags_ & STATIC))
-                {
-                    // Don't resurrect removed points.
-                    if (!std::isfinite(cloud_[i].position_[0]))
-                    {
-                        continue;
-                    }
-                    cloud_[i].flags_ |= STATIC;
-                    dirty_indices_.insert(i);
-                    // TODO: Add neighborhood to dirty.
-                    for (const auto j: graph_[i].neighbors_)
-                    {
-                        // Don't add removed points.
-                        if (!(cloud_[j].flags_ & STATIC))
-                        {
-                            continue;
-                        }
-                        dirty_indices_.insert(j);
-                    }
-                    ++n_modified;
-                }
-            }
+//            else
+//            {
+//                if (false && !(cloud_[i].flags_ & STATIC))
+//                {
+//                    // Don't resurrect removed points.
+//                    if (!std::isfinite(cloud_[i].position_[0]))
+//                    {
+//                        continue;
+//                    }
+//                    cloud_[i].flags_ |= STATIC;
+//                    dirty_indices_.insert(i);
+//                    // TODO: Add neighborhood to dirty.
+//                    for (const auto j: graph_[i].neighbors_)
+//                    {
+//                        // Don't add removed points.
+//                        if (!(cloud_[j].flags_ & STATIC))
+//                        {
+//                            continue;
+//                        }
+//                        dirty_indices_.insert(j);
+//                    }
+//                    ++n_modified;
+//                }
+//            }
         }
         ROS_INFO("Occupancy of %lu points updated, %lu modified state, %lu occluded, %lu occupied, %lu empty (%.6f s).",
                  q_map.nn_[0].size(), size_t(n_modified), size_t(n_occluded), size_t(n_occupied), size_t(n_empty),
@@ -1135,7 +1159,10 @@ public:
     {
 //        ROS_INFO("Point size: %lu bytes.", sizeof(Point));
 //        ROS_INFO("Neighborhood size: %lu bytes.", sizeof(Neighborhood));
+        Lock cloud_lock(cloud_mutex_);
         assert(cloud_.empty());
+        Lock index_lock(index_mutex_);
+        Lock dirty_lock(dirty_mutex_);
         Timer t;
         for (size_t i = 0; i < points.rows; ++i)
         {
@@ -1167,8 +1194,6 @@ public:
 //        void merge(flann::Matrix<Elem> points, flann::Matrix<Elem> origin)
     void merge(const flann::Matrix<Elem>& points, const flann::Matrix<Elem>& origin)
     {
-        Lock index_lock(index_mutex_);
-        Lock cloud_lock(cloud_mutex_);
         Timer t;
         ROS_DEBUG("Merging cloud started. Capacity %lu points.", capacity());
         // TODO: Forbid allocation while in use or lock?
@@ -1188,6 +1213,8 @@ public:
 
         // Find NN distance within current map.
 //        Lock index_lock(index_mutex_);
+        Lock cloud_lock(cloud_mutex_);
+        Lock index_lock(index_mutex_);
         Query<Elem> q(*index_, points, Neighborhood::K_NEIGHBORS, neighborhood_radius_);
         ROS_DEBUG("Got neighbors for %lu points (%.3f s).",
                   points.rows,
@@ -1197,6 +1224,8 @@ public:
         // We'll assume that input points also (approx.) comply to the
         // same min. distance threshold, so each added point can be tested
         // separately.
+        Lock added_lock(updated_mutex_);
+        Lock dirty_lock(dirty_mutex_);
         Index start = static_cast<Index>(size());
         for (Index i = 0; i < points.rows; ++i)
         {
@@ -1232,6 +1261,7 @@ public:
             }
             if (add)
             {
+                updated_indices_.push_back(cloud_.size());
                 dirty_indices_.insert(cloud_.size());
 
                 Point point;
@@ -1334,9 +1364,10 @@ public:
         cloud.point_step = uint32_t(sizeof(Point));
     }
 
-    void create_debug_cloud(sensor_msgs::PointCloud2& cloud)
+    void create_cloud_msg(sensor_msgs::PointCloud2& cloud)
     {
         initialize_cloud(cloud);
+        Lock cloud_lock(cloud_mutex_);
         sensor_msgs::PointCloud2Modifier modifier(cloud);
         modifier.resize(cloud_.size());
 //        std::copy(&cloud_.front(), &cloud_.back(), &cloud.data.front());
@@ -1349,37 +1380,57 @@ public:
         std::copy(from, to, out);
     }
 
-    template<typename It>
-    void create_debug_cloud(It begin, Index n, sensor_msgs::PointCloud2& cloud)
+    template<typename C>
+    void create_cloud_msg(const C& indices, sensor_msgs::PointCloud2& cloud)
     {
         initialize_cloud(cloud);
         sensor_msgs::PointCloud2Modifier modifier(cloud);
-        modifier.resize(n);
-        It it = begin;
+        modifier.resize(indices.size());
+//        auto it = indices.begin();
         auto out = cloud.data.data();
-        for (Index i = 0; i < n; ++i, ++it, out += cloud.point_step)
+//        for (Index i = 0; i < n; ++i, ++it, out += cloud.point_step)
+//        {
+//            const auto from = reinterpret_cast<uint8_t*>(&cloud_[*it]);
+//            std::copy(from, from + cloud.point_step, out);
+//        }
+        for (auto it = indices.begin(); it != indices.end(); ++it, out += cloud.point_step)
         {
             const auto from = reinterpret_cast<uint8_t*>(&cloud_[*it]);
             std::copy(from, from + cloud.point_step, out);
         }
     }
 
-    void create_cloud(sensor_msgs::PointCloud2& cloud)
-    {
-        Timer t;
-        create_debug_cloud(cloud);
-        ROS_DEBUG("Creating cloud with %u points: %.3f s.",
-                  cloud.height * cloud.width, t.seconds_elapsed());
-    }
+//    template<typename It>
+//    void create_debug_cloud(It begin, Index n, sensor_msgs::PointCloud2& cloud)
+//    {
+//        initialize_cloud(cloud);
+//        sensor_msgs::PointCloud2Modifier modifier(cloud);
+//        modifier.resize(n);
+//        It it = begin;
+//        auto out = cloud.data.data();
+//        for (Index i = 0; i < n; ++i, ++it, out += cloud.point_step)
+//        {
+//            const auto from = reinterpret_cast<uint8_t*>(&cloud_[*it]);
+//            std::copy(from, from + cloud.point_step, out);
+//        }
+//    }
 
-    void create_dirty_cloud(sensor_msgs::PointCloud2& cloud)
-    {
-        Lock lock(dirty_mutex_);
-        Timer t;
-        create_debug_cloud(dirty_indices_.begin(), dirty_indices_.size(), cloud);
-        ROS_DEBUG("Creating dirty cloud with %u points: %.3f s.",
-                  cloud.height * cloud.width, t.seconds_elapsed());
-    }
+//    void create_cloud_msg(sensor_msgs::PointCloud2& cloud)
+//    {
+//        Timer t;
+//        create_debug_cloud(cloud);
+//        ROS_DEBUG("Creating cloud with %u points: %.3f s.",
+//                  cloud.height * cloud.width, t.seconds_elapsed());
+//    }
+
+//    void create_dirty_cloud(sensor_msgs::PointCloud2& cloud)
+//    {
+//        Lock lock(dirty_mutex_);
+//        Timer t;
+//        create_debug_cloud(dirty_indices_.begin(), dirty_indices_.size(), cloud);
+//        ROS_DEBUG("Creating dirty cloud with %u points: %.3f s.",
+//                  cloud.height * cloud.width, t.seconds_elapsed());
+//    }
 
     size_t capacity() const
     {
@@ -1400,15 +1451,19 @@ public:
         return cloud_.empty();
     }
 
-    // Lock mutexes in this sequence if multiple are needed:
-    // index_mutex_, cloud_mutex_, dirty_mutex_.
-
-    mutable Mutex index_mutex_;
-    std::shared_ptr<flann::Index<flann::L2_3D<Value>>> index_;
+    // Lock mutexes in this sequence
+    // cloud_mutex_, index_mutex_, dirty_mutex_.
+    // to avoid deadlocks.
 
     mutable Mutex cloud_mutex_;
     std::vector<Point> cloud_;
     std::vector<Neighborhood> graph_;
+
+    mutable Mutex index_mutex_;
+    std::shared_ptr<flann::Index<flann::L2_3D<Value>>> index_;
+
+    mutable Mutex updated_mutex_;
+    std::vector<Index> updated_indices_;
 
     mutable Mutex dirty_mutex_;
 //    std::set<Index> dirty_indices_;

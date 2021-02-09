@@ -179,6 +179,7 @@ public:
         viewpoints_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("viewpoints", 5);
         other_viewpoints_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("other_viewpoints", 5);
         map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 5);
+        updated_map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("updated_map", 5);
         dirty_map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("dirty_map", 5);
         map_diff_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map_diff", 5);
         local_map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("local_map", 5);
@@ -332,8 +333,9 @@ public:
                 {
                     continue;
                 }
-                Lock index_lock(map_.index_mutex_);
                 Lock cloud_lock(map_.cloud_mutex_);
+                Lock index_lock(map_.index_mutex_);
+
 
                 RadiusQuery<Value> q(*map_.index_, FMat(pos.data(), 1, 3), max_vp_distance_);
                 assert(q.nn_.size() == 1);
@@ -540,8 +542,8 @@ public:
 //        flann::Matrix<Elem> points(points_buf.begin(), n_pts, 3);
 //        flann::Matrix<Elem> normals(normals_buf.begin(), n_pts, 3);
 //        ROS_INFO("Copy of %lu points and normals: %.3f s.", n_pts, t.seconds_elapsed());
-        Lock index_lock(map_.index_mutex_);
         Lock cloud_lock(map_.cloud_mutex_);
+        Lock index_lock(map_.index_mutex_);
         Lock dirty_lock(map_.dirty_mutex_);
 
         map_.cloud_.clear();
@@ -620,8 +622,8 @@ public:
             }
         }
 
-        Lock index_lock(map_.index_mutex_);
         Lock cloud_lock(map_.cloud_mutex_);
+        Lock index_lock(map_.index_mutex_);
 
         t.reset();
 
@@ -638,8 +640,8 @@ public:
 
         // Create debug cloud for visualization of intermediate results.
         sensor_msgs::PointCloud2 debug_cloud;
-        map_.create_debug_cloud(debug_cloud);
-
+//        map_.create_debug_cloud(debug_cloud);
+        map_.create_cloud_msg(debug_cloud);
         debug_cloud.header.frame_id = map_frame_;
         // TODO: Refresh on sending?
         debug_cloud.header.stamp = ros::Time::now();
@@ -799,8 +801,8 @@ public:
             sensor_msgs::PointCloud2 map_cloud;
             map_cloud.header.frame_id = map_frame_;
             map_cloud.header.stamp = ros::Time::now();
-            Lock lock(map_.cloud_mutex_);
-            map_.create_cloud(map_cloud);
+//            Lock lock(map_.cloud_mutex_);
+            map_.create_cloud_msg(map_cloud);
             map_pub_.publish(map_cloud);
             ROS_DEBUG("Sending map: %.3f s.", t_send.seconds_elapsed());
         }
@@ -961,18 +963,112 @@ public:
         }
     }
 
-    void send_local_map(Value* origin, const ros::Time& stamp)
+    void send_cloud(ros::Publisher& pub, const ros::Time& stamp = ros::Time(0), bool force = false)
     {
-        Timer t;
-        sensor_msgs::PointCloud2 local_map;
-        local_map.header.frame_id = map_frame_;
-        local_map.header.stamp = stamp;
-        Lock lock_cloud(map_.cloud_mutex_);
-        const auto ind = map_.nearby_indices(origin, 20.);
-        map_.create_debug_cloud(ind.begin(), ind.size(), local_map);
-        local_map_pub_.publish(local_map);
-        ROS_DEBUG("Sending local cloud: %.3f s.", t.seconds_elapsed());
+        if (force || pub.getNumSubscribers() > 0)
+        {
+            Timer t;
+            sensor_msgs::PointCloud2 cloud;
+            cloud.header.frame_id = map_frame_;
+            cloud.header.stamp = stamp.toNSec() == 0 ? ros::Time::now() : stamp;
+            map_.create_cloud_msg(cloud);
+            pub.publish(cloud);
+            ROS_DEBUG("Sending cloud %s: %.3f s.", pub.getTopic().c_str(), t.seconds_elapsed());
+        }
     }
+
+    void send_map(const ros::Time& stamp = ros::Time(0), bool force = false)
+    {
+//        if (map_pub_.getNumSubscribers() > 0)
+//        {
+//            Timer t_send;
+//            sensor_msgs::PointCloud2 map_cloud;
+//            map_cloud.header.frame_id = map_frame_;
+//            map_cloud.header.stamp = stamp;
+//            Lock lock(map_.cloud_mutex_);
+//            map_.create_cloud_msg(map_cloud);
+//            map_pub_.publish(map_cloud);
+//            ROS_DEBUG("Sending map: %.3f s.", t_send.seconds_elapsed());
+//        }
+        send_cloud(map_pub_, stamp, force);
+    }
+
+    template<typename C>
+    void send_cloud(ros::Publisher& pub, const C& indices, const ros::Time& stamp = ros::Time(0), bool force = false)
+    {
+        if (force || pub.getNumSubscribers() > 0)
+        {
+            Timer t;
+            sensor_msgs::PointCloud2 cloud;
+            cloud.header.frame_id = map_frame_;
+            cloud.header.stamp = stamp.toNSec() == 0 ? ros::Time::now() : stamp;
+//            {
+//                Lock cloud_lock(map_.cloud_mutex_);
+//                Lock index_lock(map_.index_mutex_);
+                map_.create_cloud_msg(indices, cloud);
+//            }
+            pub.publish(cloud);
+            ROS_DEBUG("Sending cloud %s: %.3f s.", pub.getTopic().c_str(), t.seconds_elapsed());
+        }
+    }
+
+    void send_dirty_cloud(const ros::Time& stamp = ros::Time(0), bool force = false)
+    {
+        if (force || dirty_map_pub_.getNumSubscribers() > 0)
+        {
+            Lock cloud_lock(map_.cloud_mutex_);
+            Lock index_lock(map_.index_mutex_);
+            Lock updated_lock(map_.updated_mutex_);
+            Lock dirty_lock(map_.dirty_mutex_);
+            send_cloud(dirty_map_pub_, map_.dirty_indices_, stamp, force);
+        }
+    }
+
+    void send_updated_cloud(const ros::Time& stamp = ros::Time(0), bool force = false)
+    {
+        if (force || updated_map_pub_.getNumSubscribers() > 0)
+        {
+            Lock cloud_lock(map_.cloud_mutex_);
+            Lock index_lock(map_.index_mutex_);
+            Lock updated_lock(map_.updated_mutex_);
+            send_cloud(updated_map_pub_, map_.updated_indices_, stamp, force);
+        }
+    }
+
+    void send_local_map(Value* origin, const ros::Time& stamp = ros::Time(0), bool force = false)
+    {
+        if (force || local_map_pub_.getNumSubscribers() > 0)
+        {
+//            Timer t;
+//            sensor_msgs::PointCloud2 local_map;
+//            local_map.header.frame_id = map_frame_;
+//            local_map.header.stamp = stamp;
+//            Lock cloud_lock(map_.cloud_mutex_);
+//            Lock index_lock(map_.index_mutex_);
+//            Lock dirty_lock(map_.dirty_mutex_);
+            const auto indices = map_.nearby_indices(origin, input_range_);
+//            map_.create_debug_cloud(ind.begin(), ind.size(), local_map);
+//            local_map_pub_.publish(local_map);
+//            ROS_DEBUG("Sending local cloud: %.3f s.", t.seconds_elapsed());
+            send_cloud(local_map_pub_, indices, stamp, force);
+        }
+    }
+
+//    void send_local_map(Value* origin, const ros::Time& stamp, bool force = false)
+//    {
+//        if (force || local_map_pub_.getNumSubscribers() > 0)
+//        {
+//            Timer t;
+//            sensor_msgs::PointCloud2 local_map;
+//            local_map.header.frame_id = map_frame_;
+//            local_map.header.stamp = stamp;
+//            Lock lock_cloud(map_.cloud_mutex_);
+//            const auto ind = map_.nearby_indices(origin, 20.);
+//            map_.create_debug_cloud(ind.begin(), ind.size(), local_map);
+//            local_map_pub_.publish(local_map);
+//            ROS_DEBUG("Sending local cloud: %.3f s.", t.seconds_elapsed());
+//        }
+//    }
 
 //    void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
     void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& input)
@@ -1073,44 +1169,52 @@ public:
                   size_t(n_added), size_t(n_pts));
         flann::Matrix<Elem> points(points_buf.begin(), n_added, 3);
 
-        Lock index_lock(map_.index_mutex_);
         Lock cloud_lock(map_.cloud_mutex_);
+        Lock index_lock(map_.index_mutex_);
 
         {
+            Lock added_lock(map_.updated_mutex_);
             Lock lock_dirty(map_.dirty_mutex_);
             map_.merge(points, origin_mat);
             map_.update_dirty();
 //            ROS_INFO("Input cloud with %u points merged: %.3f s.", n_added, t.seconds_elapsed());
             // TODO: Mark affected map points for update?
-
-            Timer t_send;
-            sensor_msgs::PointCloud2 map_dirty;
-            map_dirty.header.frame_id = map_frame_;
-            map_dirty.header.stamp = cloud->header.stamp;
-            Lock lock_cloud(map_.cloud_mutex_);
-            map_.create_dirty_cloud(map_dirty);
-            dirty_map_pub_.publish(map_dirty);
-            ROS_DEBUG("Sending dirty cloud: %.3f s.", t_send.seconds_elapsed());
-
+            send_dirty_cloud(cloud->header.stamp);
+//            if (dirty_map_pub_.getNumSubscribers() > 0)
+//            {
+//                Timer t_send;
+//                sensor_msgs::PointCloud2 map_dirty;
+//                map_dirty.header.frame_id = map_frame_;
+//                map_dirty.header.stamp = cloud->header.stamp;
+//                Lock lock_cloud(map_.cloud_mutex_);
+//                map_.create_dirty_cloud(map_dirty);
+//                dirty_map_pub_.publish(map_dirty);
+//                ROS_DEBUG("Sending dirty cloud: %.3f s.", t_send.seconds_elapsed());
+//            }
             map_.clear_dirty();
+
+            send_updated_cloud(cloud->header.stamp);
+            map_.clear_updated();
         }
 
-        if (local_map_pub_.getNumSubscribers() > 0)
-        {
+//        if (local_map_pub_.getNumSubscribers() > 0)
+//        {
             send_local_map(origin.data(), cloud->header.stamp);
-        }
+//        }
 
-        if (map_pub_.getNumSubscribers() > 0)
-        {
-            Timer t_send;
-            sensor_msgs::PointCloud2 map_cloud;
-            map_cloud.header.frame_id = map_frame_;
-            map_cloud.header.stamp = cloud->header.stamp;
-            Lock lock(map_.cloud_mutex_);
-            map_.create_cloud(map_cloud);
-            map_pub_.publish(map_cloud);
-            ROS_DEBUG("Sending map: %.3f s.", t_send.seconds_elapsed());
-        }
+//        if (map_pub_.getNumSubscribers() > 0)
+//        {
+//            Timer t_send;
+//            sensor_msgs::PointCloud2 map_cloud;
+//            map_cloud.header.frame_id = map_frame_;
+//            map_cloud.header.stamp = cloud->header.stamp;
+//            Lock lock(map_.cloud_mutex_);
+//            map_.create_cloud_msg(map_cloud);
+//            map_pub_.publish(map_cloud);
+//            ROS_DEBUG("Sending map: %.3f s.", t_send.seconds_elapsed());
+//        }
+        send_map(cloud->header.stamp);
+//        send
     }
 
 protected:
@@ -1129,6 +1233,7 @@ protected:
 
     std::vector<ros::Subscriber> input_cloud_subs_;
     ros::Publisher map_pub_;
+    ros::Publisher updated_map_pub_;
     ros::Publisher dirty_map_pub_;
     ros::Publisher map_diff_pub_;
     ros::Publisher local_map_pub_;
