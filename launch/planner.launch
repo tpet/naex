@@ -50,6 +50,7 @@
             min_vp_distance: 2.
             max_vp_distance: 5.
             self_factor: 0.5
+            path_cost_pow: 0.75
             planning_freq: 0.5
             random_start: false
 
