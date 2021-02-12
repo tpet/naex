@@ -87,22 +87,4 @@
               /tf_static
           "/>
 
-    <!-- Relay to robot_data -->
-    <node name="points_slow_filtered_relay" pkg="topic_tools" type="relay"
-          args="points_slow_filtered/draco out:=/robot_data/$(arg robot)/points_slow_filtered/draco"
-          respawn="true" respawn_delay="1.0" output="log"/>
-    <node name="local_map_slow_draco_relay" pkg="topic_tools" type="relay"
-          args="local_map_slow/draco out:=/robot_data/$(arg robot)/local_map_slow/draco"
-          respawn="true" respawn_delay="1.0" output="log"/>
-    <node name="updated_map_draco_relay" pkg="topic_tools" type="relay"
-          args="updated_map/draco out:=/robot_data/$(arg robot)/updated_map/draco"
-          respawn="true" respawn_delay="1.0" output="log"/>
-
-    <node name="path_relay" pkg="topic_tools" type="relay"
-          args="path out:=/robot_data/$(arg robot)/path"
-          respawn="true" respawn_delay="1.0" output="log"/>
-    <node name="control_path_relay" pkg="topic_tools" type="relay"
-          args="control_path out:=/robot_data/$(arg robot)/control_path"
-          respawn="true" respawn_delay="1.0" output="log"/>
-
 </launch>
