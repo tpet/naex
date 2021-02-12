@@ -75,6 +75,7 @@
           respawn="true" respawn_delay="1.0" output="log"/>
 
     <!-- Record -->
+    <group if="0">
     <node name="rosbag_record_naex" pkg="rosbag" type="record"
           args="--lz4 -o $(find naex)/$(arg robot_type)
               points_slow_filtered/draco
@@ -86,5 +87,5 @@
               /tf
               /tf_static
           "/>
-
+    </group>
 </launch>
