@@ -972,8 +972,11 @@ public:
             cloud.header.frame_id = map_frame_;
             cloud.header.stamp = stamp.toNSec() == 0 ? ros::Time::now() : stamp;
             map_.create_cloud_msg(cloud);
-            pub.publish(cloud);
-            ROS_DEBUG("Sending cloud %s: %.3f s.", pub.getTopic().c_str(), t.seconds_elapsed());
+            if (cloud.height * cloud.width > 0)
+            {
+                pub.publish(cloud);
+                ROS_DEBUG("Sending cloud %s: %.3f s.", pub.getTopic().c_str(), t.seconds_elapsed());
+            }
         }
     }
 
@@ -996,6 +999,8 @@ public:
     template<typename C>
     void send_cloud(ros::Publisher& pub, const C& indices, const ros::Time& stamp = ros::Time(0), bool force = false)
     {
+        if (indices.empty())
+            return;
         if (force || pub.getNumSubscribers() > 0)
         {
             Timer t;
