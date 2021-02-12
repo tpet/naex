@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <arg name="robot" default="X1"/>
+    <arg name="robot_type" default="x1"/>
+
+    <node name="throttle_local_map" pkg="topic_tools" type="throttle"
+          args="messages local_map 0.1 local_map_slow"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+    <!-- Compress point clouds -->
+    <rosparam>
+        points_slow_filtered:
+          draco:
+            encode_speed: 7
+            decode_speed: 7
+            encode_method: 1
+            deduplicate: true
+            force_quantization: true
+
+            quantization_POSITION: 13
+            quantization_NORMAL: 4
+            quantization_COLOR: 4
+            quantization_TEX_COORD: 8
+            quantization_GENERIC: 8
+
+            expert_attribute_types: false
+            expert_quantization: false
+    </rosparam>
+    <node name="points_slow_filtered_draco" pkg="point_cloud_transport" type="republish"
+          args="raw in:=points_slow_filtered draco out:=points_slow_filtered"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+    <rosparam>
+        local_map_slow:
+          draco:
+            encode_speed: 7
+            decode_speed: 7
+            encode_method: 1
+            deduplicate: true
+            force_quantization: true
+
+            quantization_POSITION: 13
+            quantization_NORMAL: 4
+            quantization_COLOR: 4
+            quantization_TEX_COORD: 8
+            quantization_GENERIC: 8
+
+            expert_attribute_types: false
+            expert_quantization: false
+    </rosparam>
+    <node name="local_map_slow_draco" pkg="point_cloud_transport" type="republish"
+          args="raw in:=local_map_slow draco out:=local_map_slow"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+    <rosparam>
+        updated_map:
+          draco:
+            encode_speed: 7
+            decode_speed: 7
+            encode_method: 1
+            deduplicate: true
+            force_quantization: true
+
+            quantization_POSITION: 13
+            quantization_NORMAL: 4
+            quantization_COLOR: 4
+            quantization_TEX_COORD: 8
+            quantization_GENERIC: 8
+
+            expert_attribute_types: false
+            expert_quantization: false
+    </rosparam>
+    <node name="updated_map_draco" pkg="point_cloud_transport" type="republish"
+          args="raw in:=updated_map draco out:=updated_map"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+    <!-- Record -->
+    <node name="rosbag_record_naex" pkg="rosbag" type="record"
+          args="--lz4 -o $(find naex)/$(arg robot_type)
+              points_slow_filtered/draco
+              local_map_slow/draco
+              updated_map/draco
+              path
+              control_path
+              cmd_vel
+              /tf
+              /tf_static
+          "/>
+
+    <!-- Relay to robot_data -->
+    <node name="points_slow_filtered_relay" pkg="topic_tools" type="relay"
+          args="points_slow_filtered/draco out:=/robot_data/$(arg robot)/points_slow_filtered/draco"
+          respawn="true" respawn_delay="1.0" output="log"/>
+    <node name="local_map_slow_draco_relay" pkg="topic_tools" type="relay"
+          args="local_map_slow/draco out:=/robot_data/$(arg robot)/local_map_slow/draco"
+          respawn="true" respawn_delay="1.0" output="log"/>
+    <node name="updated_map_draco_relay" pkg="topic_tools" type="relay"
+          args="updated_map/draco out:=/robot_data/$(arg robot)/updated_map/draco"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+    <node name="path_relay" pkg="topic_tools" type="relay"
+          args="path out:=/robot_data/$(arg robot)/path"
+          respawn="true" respawn_delay="1.0" output="log"/>
+    <node name="control_path_relay" pkg="topic_tools" type="relay"
+          args="control_path out:=/robot_data/$(arg robot)/control_path"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
+</launch>

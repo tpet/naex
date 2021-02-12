@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <launch>
     <arg name="robot" default="X1"/>
+    <arg name="robot_type" default="explorer_x1"/>
     <arg name="robots" default="$(arg robot)"/>
-    <arg name="robot_type" default="x1"/>
     <arg name="points_min_dist" default="0.125"/>
+    <arg name="cmd_vel" default="cmd_vel"/>
 
     <include file="$(dirname)/tf.launch" pass_all_args="true"/>
     <include file="$(dirname)/preproc.launch" pass_all_args="true"/>
     <include file="$(dirname)/slam.launch" pass_all_args="true"/>
     <include file="$(dirname)/planner.launch" pass_all_args="true"/>
     <include file="$(dirname)/follower.launch" pass_all_args="true"/>
+    <include file="$(dirname)/record.launch" pass_all_args="true"/>
 </launch>
