@@ -152,7 +152,7 @@ public:
 //        Cost d = std::sqrt(cloud_[v0].distances_[v1_index]);
         Cost c = graph_[v0].distances_[v1_index];
 //        if (c > clearance_radius_)
-        if (c > 2 * points_min_dist_)
+        if (c > 3 * points_min_dist_)
         {
             return std::numeric_limits<Cost>::infinity();
         }
