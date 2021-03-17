@@ -6,12 +6,12 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /TF1/Frames1
         - /X1 odometry1/Shape1
         - /X2 odometry1/Shape1
         - /X3 odometry1/Shape1
         - /X1 filtered clouds1/Autocompute Value Bounds1
-      Splitter Ratio: 0.5
+        - /X1 updated map1/Autocompute Value Bounds1
+      Splitter Ratio: 0.5628272294998169
     Tree Height: 849
   - Class: rviz/Selection
     Name: Selection
@@ -26,12 +26,12 @@ Panels:
     Expanded:
       - /Current View1
     Name: Views
-    Splitter Ratio: 0.5117647051811218
+    Splitter Ratio: 0.554973840713501
   - Class: rviz/Time
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: X1 detection original
+    SyncSource: X2 confirmed hypotheses
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -39,7 +39,7 @@ Toolbars:
 Visualization Manager:
   Class: ""
   Displays:
-    - Alpha: 0.25
+    - Alpha: 0.20000000298023224
       Cell Size: 10
       Class: rviz/Grid
       Color: 160; 160; 164
@@ -57,7 +57,7 @@ Visualization Manager:
       Plane Cell Count: 100
       Reference Frame: <Fixed Frame>
       Value: true
-    - Alpha: 0.25
+    - Alpha: 0.20000000298023224
       Cell Size: 100
       Class: rviz/Grid
       Color: 160; 160; 164
@@ -80,12 +80,10 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: false
-        TEAMBASE:
-          Value: true
-        TEAMBASE/link:
-          Value: false
         X1:
           Value: true
+        X1/base_footprint:
+          Value: false
         X1/base_link:
           Value: false
         X1/base_link/front_laser:
@@ -111,27 +109,7 @@ Visualization Manager:
         X1/breadcrumb_0:
           Value: false
         X1/breadcrumb_1:
-          Value: false
-        X1/breadcrumb_10:
-          Value: false
-        X1/breadcrumb_11:
-          Value: false
-        X1/breadcrumb_2:
-          Value: false
-        X1/breadcrumb_3:
-          Value: false
-        X1/breadcrumb_4:
-          Value: false
-        X1/breadcrumb_5:
-          Value: false
-        X1/breadcrumb_6:
-          Value: false
-        X1/breadcrumb_7:
-          Value: false
-        X1/breadcrumb_8:
-          Value: false
-        X1/breadcrumb_9:
-          Value: false
+          Value: true
         X1/front_left_wheel_link:
           Value: false
         X1/front_right_wheel_link:
@@ -144,10 +122,10 @@ Visualization Manager:
           Value: false
         X1/rear_right_wheel_link:
           Value: false
-        X1_ground_truth:
-          Value: false
         X2:
           Value: true
+        X2/base_footprint:
+          Value: false
         X2/base_link:
           Value: false
         X2/base_link/front_laser:
@@ -174,12 +152,26 @@ Visualization Manager:
           Value: false
         X2/breadcrumb_1:
           Value: false
+        X2/breadcrumb_10:
+          Value: true
+        X2/breadcrumb_11:
+          Value: true
         X2/breadcrumb_2:
           Value: false
         X2/breadcrumb_3:
           Value: false
         X2/breadcrumb_4:
-          Value: false
+          Value: true
+        X2/breadcrumb_5:
+          Value: true
+        X2/breadcrumb_6:
+          Value: true
+        X2/breadcrumb_7:
+          Value: true
+        X2/breadcrumb_8:
+          Value: true
+        X2/breadcrumb_9:
+          Value: true
         X2/front_left_wheel_link:
           Value: false
         X2/front_right_wheel_link:
@@ -192,10 +184,10 @@ Visualization Manager:
           Value: false
         X2/rear_right_wheel_link:
           Value: false
-        X2_ground_truth:
-          Value: false
         X3:
           Value: true
+        X3/base_footprint:
+          Value: false
         X3/base_link:
           Value: false
         X3/base_link/front_laser:
@@ -221,9 +213,27 @@ Visualization Manager:
         X3/breadcrumb_0:
           Value: false
         X3/breadcrumb_1:
-          Value: false
+          Value: true
+        X3/breadcrumb_10:
+          Value: true
+        X3/breadcrumb_11:
+          Value: true
         X3/breadcrumb_2:
-          Value: false
+          Value: true
+        X3/breadcrumb_3:
+          Value: true
+        X3/breadcrumb_4:
+          Value: true
+        X3/breadcrumb_5:
+          Value: true
+        X3/breadcrumb_6:
+          Value: true
+        X3/breadcrumb_7:
+          Value: true
+        X3/breadcrumb_8:
+          Value: true
+        X3/breadcrumb_9:
+          Value: true
         X3/front_left_wheel_link:
           Value: false
         X3/front_right_wheel_link:
@@ -236,168 +246,210 @@ Visualization Manager:
           Value: false
         X3/rear_right_wheel_link:
           Value: false
-        X3_ground_truth:
-          Value: false
-        cave_circuit_06:
-          Value: false
+        cave_circuit_05:
+          Value: true
         subt:
-          Value: true
+          Value: false
         uav2/base_link:
-          Value: true
+          Value: false
         uav4/base_link:
-          Value: true
+          Value: false
         uav5/base_link:
-          Value: true
+          Value: false
         world:
           Value: false
-      Marker Scale: 50
+      Marker Scale: 25
       Name: TF
       Show Arrows: false
       Show Axes: true
       Show Names: true
       Tree:
-        world:
-          X1_ground_truth:
+        subt:
+          X1/breadcrumb_0:
             {}
-          X2_ground_truth:
+          X1/breadcrumb_1:
             {}
-          X3_ground_truth:
+          X1/map:
+            X1/odom:
+              X1:
+                X1/base_link:
+                  X1/base_footprint:
+                    {}
+                  X1/base_link/front_laser:
+                    {}
+                  X1/base_link/front_realsense:
+                    {}
+                  X1/base_link/imu_sensor:
+                    {}
+                  X1/base_link/left_realsense:
+                    {}
+                  X1/base_link/rear_realsense:
+                    {}
+                  X1/base_link/right_realsense:
+                    {}
+                X1/front_left_wheel_link:
+                  {}
+                X1/front_right_wheel_link:
+                  {}
+                X1/rear_left_wheel_link:
+                  {}
+                X1/rear_right_wheel_link:
+                  {}
+          X2/breadcrumb_0:
             {}
-          cave_circuit_06:
+          X2/breadcrumb_1:
             {}
-          subt:
-            X1/breadcrumb_0:
-              {}
-            X1/breadcrumb_1:
-              {}
-            X1/breadcrumb_10:
-              {}
-            X1/breadcrumb_11:
-              {}
-            X1/breadcrumb_2:
-              {}
-            X1/breadcrumb_3:
-              {}
-            X1/breadcrumb_4:
-              {}
-            X1/breadcrumb_5:
-              {}
-            X1/breadcrumb_6:
-              {}
-            X1/breadcrumb_7:
-              {}
-            X1/breadcrumb_8:
-              {}
-            X1/breadcrumb_9:
-              {}
-            X1/map:
-              X1/odom:
-                X1:
-                  X1/base_link:
-                    X1/base_link/front_laser:
+          X2/breadcrumb_10:
+            {}
+          X2/breadcrumb_11:
+            {}
+          X2/breadcrumb_2:
+            {}
+          X2/breadcrumb_3:
+            {}
+          X2/breadcrumb_4:
+            {}
+          X2/breadcrumb_5:
+            {}
+          X2/breadcrumb_6:
+            {}
+          X2/breadcrumb_7:
+            {}
+          X2/breadcrumb_8:
+            {}
+          X2/breadcrumb_9:
+            {}
+          X2/map:
+            X2/odom:
+              X2:
+                X2/base_link:
+                  X2/base_footprint:
+                    {}
+                  X2/base_link/front_laser:
+                    {}
+                  X2/base_link/front_realsense:
+                    {}
+                  X2/base_link/imu_sensor:
+                    {}
+                  X2/base_link/left_realsense:
+                    {}
+                  X2/base_link/rear_realsense:
+                    X2/base_link/rear_realsense_optical:
                       {}
-                    X1/base_link/front_realsense:
-                      X1/base_link/front_realsense_optical:
-                        {}
-                    X1/base_link/imu_sensor:
-                      {}
-                    X1/base_link/left_realsense:
-                      X1/base_link/left_realsense_optical:
-                        {}
-                    X1/base_link/rear_realsense:
-                      X1/base_link/rear_realsense_optical:
-                        {}
-                    X1/base_link/right_realsense:
-                      X1/base_link/right_realsense_optical:
-                        {}
-                  X1/front_left_wheel_link:
+                  X2/base_link/right_realsense:
                     {}
-                  X1/front_right_wheel_link:
+                X2/front_left_wheel_link:
+                  {}
+                X2/front_right_wheel_link:
+                  {}
+                X2/rear_left_wheel_link:
+                  {}
+                X2/rear_right_wheel_link:
+                  {}
+          X3/breadcrumb_0:
+            {}
+          X3/breadcrumb_1:
+            {}
+          X3/breadcrumb_10:
+            {}
+          X3/breadcrumb_11:
+            {}
+          X3/breadcrumb_2:
+            {}
+          X3/breadcrumb_3:
+            {}
+          X3/breadcrumb_4:
+            {}
+          X3/breadcrumb_5:
+            {}
+          X3/breadcrumb_6:
+            {}
+          X3/breadcrumb_7:
+            {}
+          X3/breadcrumb_8:
+            {}
+          X3/breadcrumb_9:
+            {}
+          X3/map:
+            X3/odom:
+              X3:
+                X3/base_link:
+                  X3/base_link/front_laser:
                     {}
-                  X1/rear_left_wheel_link:
+                  X3/base_link/front_realsense:
                     {}
-                  X1/rear_right_wheel_link:
+                  X3/base_link/imu_sensor:
                     {}
-            X2/breadcrumb_0:
-              {}
-            X2/breadcrumb_1:
-              {}
-            X2/breadcrumb_2:
-              {}
-            X2/breadcrumb_3:
-              {}
-            X2/breadcrumb_4:
-              {}
-            X2/map:
-              X2/odom:
-                X2:
-                  X2/base_link:
-                    X2/base_link/front_laser:
-                      {}
-                    X2/base_link/front_realsense:
-                      X2/base_link/front_realsense_optical:
-                        {}
-                    X2/base_link/imu_sensor:
-                      {}
-                    X2/base_link/left_realsense:
-                      X2/base_link/left_realsense_optical:
-                        {}
-                    X2/base_link/rear_realsense:
-                      X2/base_link/rear_realsense_optical:
-                        {}
-                    X2/base_link/right_realsense:
-                      X2/base_link/right_realsense_optical:
-                        {}
-                  X2/front_left_wheel_link:
+                  X3/base_link/left_realsense:
                     {}
-                  X2/front_right_wheel_link:
+                  X3/base_link/rear_realsense:
                     {}
-                  X2/rear_left_wheel_link:
+                  X3/base_link/right_realsense:
                     {}
-                  X2/rear_right_wheel_link:
-                    {}
-            X3/breadcrumb_0:
-              {}
-            X3/breadcrumb_1:
-              {}
-            X3/breadcrumb_2:
-              {}
-            X3/map:
-              X3/odom:
-                X3:
-                  X3/base_link:
-                    X3/base_link/front_laser:
-                      {}
-                    X3/base_link/front_realsense:
-                      X3/base_link/front_realsense_optical:
-                        {}
-                    X3/base_link/imu_sensor:
-                      {}
-                    X3/base_link/left_realsense:
-                      X3/base_link/left_realsense_optical:
-                        {}
-                    X3/base_link/rear_realsense:
-                      X3/base_link/rear_realsense_optical:
-                        {}
-                    X3/base_link/right_realsense:
-                      X3/base_link/right_realsense_optical:
-                        {}
-                  X3/front_left_wheel_link:
-                    {}
-                  X3/front_right_wheel_link:
-                    {}
-                  X3/rear_left_wheel_link:
-                    {}
-                  X3/rear_right_wheel_link:
-                    {}
-            uav2/base_link:
-              {}
-            uav4/base_link:
-              {}
-            uav5/base_link:
-              {}
+                X3/front_left_wheel_link:
+                  {}
+                X3/front_right_wheel_link:
+                  {}
+                X3/rear_left_wheel_link:
+                  {}
+                X3/rear_right_wheel_link:
+                  {}
+          uav2/base_link:
+            {}
+          uav4/base_link:
+            {}
+          uav5/base_link:
+            {}
       Update Interval: 0
       Value: true
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: ""
+      Name: X1 robot model
+      Robot Description: X1/robot_description
+      TF Prefix: ""
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: ""
+      Name: X2 robot model
+      Robot Description: X2/robot_description
+      TF Prefix: ""
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: ""
+      Name: X3 robot model
+      Robot Description: X3/robot_description
+      TF Prefix: ""
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
     - Class: rviz/Image
       Enabled: true
       Image Topic: /robot_data/X1/artifact_detections_orig_image
@@ -637,7 +689,7 @@ Visualization Manager:
       Class: rviz/PointCloud2
       Color: 255; 0; 0
       Color Transformer: FlatColor
-      Decay Time: 30
+      Decay Time: 10
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 0; 0
@@ -651,7 +703,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.05000000074505806
       Style: Flat Squares
-      Topic: /robot_data/X1/points_slow_filtered_planner
+      Topic: X1/points_slow_filtered
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: false
@@ -667,7 +719,7 @@ Visualization Manager:
       Class: rviz/PointCloud2
       Color: 0; 255; 0
       Color Transformer: FlatColor
-      Decay Time: 30
+      Decay Time: 10
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 0; 0
@@ -681,7 +733,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.05000000074505806
       Style: Flat Squares
-      Topic: /robot_data/X2/points_slow_filtered_planner
+      Topic: X2/points_slow_filtered
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: false
@@ -697,7 +749,7 @@ Visualization Manager:
       Class: rviz/PointCloud2
       Color: 63; 63; 255
       Color Transformer: FlatColor
-      Decay Time: 30
+      Decay Time: 10
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 0; 0
@@ -711,11 +763,371 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.05000000074505806
       Style: Flat Squares
-      Topic: /robot_data/X3/points_slow_filtered_planner
+      Topic: X3/points_slow_filtered
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: false
       Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 22.095291137695312
+        Min Value: -10.019721031188965
+        Value: true
+      Axis: Z
+      Channel Name: flags
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: Intensity
+      Decay Time: 600
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 0; 0
+      Max Intensity: 54
+      Min Color: 127; 63; 63
+      Min Intensity: 2
+      Name: X1 local map
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X1/local_map_slow
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 22.095291137695312
+        Min Value: -10.019721031188965
+        Value: true
+      Axis: Z
+      Channel Name: flags
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: Intensity
+      Decay Time: 600
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 0; 0
+      Max Intensity: 54
+      Min Color: 127; 63; 63
+      Min Intensity: 2
+      Name: X2 local map
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X2/local_map_slow
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 22.095291137695312
+        Min Value: -10.019721031188965
+        Value: true
+      Axis: Z
+      Channel Name: flags
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: Intensity
+      Decay Time: 600
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 0; 0
+      Max Intensity: 54
+      Min Color: 127; 63; 63
+      Min Intensity: 2
+      Name: X3 local map
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X3/local_map_slow
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 22.095291137695312
+        Min Value: -10.019721031188965
+        Value: true
+      Axis: Z
+      Channel Name: path_cost
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 0; 0
+      Max Intensity: 10
+      Min Color: 127; 63; 63
+      Min Intensity: 0
+      Name: X1 local path costs
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X1/local_map_slow
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 22.095291137695312
+        Min Value: -10.019721031188965
+        Value: true
+      Axis: Z
+      Channel Name: path_cost
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 0; 0
+      Max Intensity: 10
+      Min Color: 127; 63; 63
+      Min Intensity: 0
+      Name: X2 local path costs
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X2/local_map_slow
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 22.095291137695312
+        Min Value: -10.019721031188965
+        Value: true
+      Axis: Z
+      Channel Name: path_cost
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 0; 0
+      Max Intensity: 10
+      Min Color: 127; 63; 63
+      Min Intensity: 0
+      Name: X3 local path costs
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X3/local_map_slow
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 22.095291137695312
+        Min Value: -10.019721031188965
+        Value: true
+      Axis: Z
+      Channel Name: reward
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: Intensity
+      Decay Time: 60
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 255; 0
+      Max Intensity: 32
+      Min Color: 0; 0; 127
+      Min Intensity: 0
+      Name: X1 local reward
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X1/local_map_slow
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: false
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 22.095291137695312
+        Min Value: -10.019721031188965
+        Value: true
+      Axis: Z
+      Channel Name: reward
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: Intensity
+      Decay Time: 60
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 255; 0
+      Max Intensity: 32
+      Min Color: 0; 0; 127
+      Min Intensity: 0
+      Name: X2 local reward
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X2/local_map_slow
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: false
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 22.095291137695312
+        Min Value: -10.019721031188965
+        Value: true
+      Axis: Z
+      Channel Name: reward
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: Intensity
+      Decay Time: 60
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 255; 0
+      Max Intensity: 32
+      Min Color: 0; 0; 127
+      Min Intensity: 0
+      Name: X3 local reward
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X3/local_map_slow
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: false
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 100
+        Min Value: -100
+        Value: false
+      Axis: Z
+      Channel Name: flags
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: AxisColor
+      Decay Time: 600
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 0; 0
+      Max Intensity: 54
+      Min Color: 127; 63; 63
+      Min Intensity: 2
+      Name: X1 updated map
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X1/updated_map
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 100
+        Min Value: -100
+        Value: false
+      Axis: Z
+      Channel Name: flags
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: AxisColor
+      Decay Time: 600
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 0; 0
+      Max Intensity: 54
+      Min Color: 127; 63; 63
+      Min Intensity: 2
+      Name: X2 updated map
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X2/updated_map
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 100
+        Min Value: -100
+        Value: false
+      Axis: Z
+      Channel Name: flags
+      Class: rviz/PointCloud2
+      Color: 0; 255; 0
+      Color Transformer: AxisColor
+      Decay Time: 600
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 0; 0
+      Max Intensity: 54
+      Min Color: 127; 63; 63
+      Min Intensity: 2
+      Name: X3 updated map
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.10000000149011612
+      Style: Flat Squares
+      Topic: X3/updated_map
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
@@ -785,6 +1197,144 @@ Visualization Manager:
       Topic: /robot_data/uav5/aloam/path/throttled
       Unreliable: false
       Value: true
+    - Alpha: 1
+      Buffer Length: 10
+      Class: rviz/Path
+      Color: 255; 255; 0
+      Enabled: false
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.20000000298023224
+      Name: X1 planned path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: X1/path
+      Unreliable: false
+      Value: false
+    - Alpha: 1
+      Buffer Length: 10
+      Class: rviz/Path
+      Color: 255; 0; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.20000000298023224
+      Name: X1 control path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: X1/control_path
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 10
+      Class: rviz/Path
+      Color: 255; 255; 0
+      Enabled: false
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.20000000298023224
+      Name: X2 planned path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: X2/path
+      Unreliable: false
+      Value: false
+    - Alpha: 1
+      Buffer Length: 10
+      Class: rviz/Path
+      Color: 0; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.20000000298023224
+      Name: X2 control path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: X2/control_path
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 10
+      Class: rviz/Path
+      Color: 255; 255; 0
+      Enabled: false
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.20000000298023224
+      Name: X3 planned path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: X3/path
+      Unreliable: false
+      Value: false
+    - Alpha: 1
+      Buffer Length: 10
+      Class: rviz/Path
+      Color: 0; 0; 255
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.20000000298023224
+      Name: X3 control path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: X3/control_path
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
@@ -822,7 +1372,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 2
+      Scale: 4
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
       X: 0
@@ -836,20 +1386,140 @@ Visualization Manager:
           Swap Stereo Eyes: false
           Value: false
         Invert Z Axis: false
-        Name: Top-down
+        Name: Top-down far
         Near Clip Distance: 0.009999999776482582
-        Scale: 2
+        Scale: 1
         Target Frame: <Fixed Frame>
         Value: TopDownOrtho (rviz)
         X: 0
         Y: 0
+      - Angle: 0
+        Class: rviz/TopDownOrtho
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Invert Z Axis: false
+        Name: Top-down close
+        Near Clip Distance: 0.009999999776482582
+        Scale: 4
+        Target Frame: <Fixed Frame>
+        Value: TopDownOrtho (rviz)
+        X: 0
+        Y: 0
+      - Angle: 0
+        Class: rviz/TopDownOrtho
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Invert Z Axis: false
+        Name: X1 top-down
+        Near Clip Distance: 497
+        Scale: 32
+        Target Frame: X1
+        Value: TopDownOrtho (rviz)
+        X: 0
+        Y: 0
+      - Angle: 0
+        Class: rviz/TopDownOrtho
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Invert Z Axis: false
+        Name: X2 top-down
+        Near Clip Distance: 497
+        Scale: 32
+        Target Frame: X2
+        Value: TopDownOrtho (rviz)
+        X: 0
+        Y: 0
+      - Angle: 0
+        Class: rviz/TopDownOrtho
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Invert Z Axis: false
+        Name: X3 top-down
+        Near Clip Distance: 497
+        Scale: 32
+        Target Frame: X3
+        Value: TopDownOrtho (rviz)
+        X: 0
+        Y: 0
+      - Class: rviz/Orbit
+        Distance: 20
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Focal Shape Fixed Size: false
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: X1 orbit
+        Near Clip Distance: 18
+        Pitch: 1.25
+        Target Frame: X1
+        Value: Orbit (rviz)
+        Yaw: 0.785398006439209
+      - Class: rviz/Orbit
+        Distance: 20
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Focal Shape Fixed Size: false
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: X2 orbit
+        Near Clip Distance: 18
+        Pitch: 1.25
+        Target Frame: X2
+        Value: Orbit (rviz)
+        Yaw: 0.785398006439209
+      - Class: rviz/Orbit
+        Distance: 20
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Focal Shape Fixed Size: false
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: X3 orbit
+        Near Clip Distance: 18
+        Pitch: 1.25
+        Target Frame: X3
+        Value: Orbit (rviz)
+        Yaw: 0.785398006439209
 Window Geometry:
   Displays:
     collapsed: false
   Height: 1136
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd000000040000000000000156000003fbfc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afc00000017000003fb000000e80100001dfa000000000100000002fb000000100044006900730070006c0061007900730100000000000001560000015600fffffffb0000000a005600690065007700730100000000ffffffff0000010000fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c0000026100000001000001a1000003fbfc0200000005fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000002a0058003100200064006500740065006300740069006f006e0020006f0072006900670069006e0061006c0100000017000001590000001600fffffffb0000002a0058003200200064006500740065006300740069006f006e0020006f0072006900670069006e0061006c0100000176000001580000001600fffffffb0000002a0058003300200064006500740065006300740069006f006e0020006f0072006900670069006e0061006c01000002d40000013e0000001600fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b2000000000000000000000002000007480000003afc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007480000003afc0100000002fb0000000800540069006d0065010000000000000748000002b900fffffffb0000000800540069006d0065010000000000000450000000000000000000000445000003fb00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730000000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd000000040000000000000180000003fbfc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afc00000017000003fb000000e80100001dfa000000010100000002fb000000100044006900730070006c0061007900730100000000000001560000015600fffffffb0000000a005600690065007700730100000000ffffffff0000010000fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c0000026100000001000001a1000003fbfc0200000005fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000002a0058003100200064006500740065006300740069006f006e0020006f0072006900670069006e0061006c0100000017000001590000001600fffffffb0000002a0058003200200064006500740065006300740069006f006e0020006f0072006900670069006e0061006c0100000176000001580000001600fffffffb0000002a0058003300200064006500740065006300740069006f006e0020006f0072006900670069006e0061006c01000002d40000013e0000001600fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b2000000000000000000000002000007480000003afc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007480000003afc0100000002fb0000000800540069006d0065010000000000000748000002b900fffffffb0000000800540069006d006501000000000000045000000000000000000000041b000003fb00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730000000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:

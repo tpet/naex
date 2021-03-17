@@ -8,10 +8,20 @@
     dynamic_point_cloud = points_slow
     os_cloud_node/points -> points_slow
     -->
+    <arg name="robot" default="X1"/>
+    <arg name="robot_type" default="x1"/>
     <arg name="points" default="points"/>
     <arg name="points_slow" default="$(arg points)_slow"/>
     <arg name="points_slow_filtered" default="$(arg points_slow)_filtered"/>
     <arg name="points_min_dist" default="0.125"/>
+
+    <node if="$(eval 'dtr' in robot_type.lower())"
+          name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+        <rosparam subst_value="true">
+            tf_prefix: X1/
+        </rosparam>
+        <remap from="joint_states" to="joint_state"/>
+    </node>
 
     <!-- TRADR adaptor -->
     <node name="dynamic_point_cloud_relay" pkg="topic_tools" type="relay"

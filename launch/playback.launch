@@ -7,17 +7,68 @@
     -->
     <arg name="bags" default="$(optenv bags)"/>
     <arg name="rate" default="10."/>
-    <arg name="config" default="$(dirname)/playback_virtual.rviz"/>
+    <arg name="config" default="$(dirname)/subt.rviz"/>
+    <arg name="robots" default="X1,X2,X3"/>
 
     <param name="use_sim_time" value="true"/>
 
-    <node name="rosbag_play" pkg="rosbag" type="play"
-          args="--clock -r $(arg rate) $(arg bags)">
+    <node name="static_transform_mux" pkg="static_transform_mux" type="static_transform_mux"/>
+
+    <node name="rosbag_play" pkg="rosbag" type="play" output="screen"
+          args="--clock -r $(arg rate) -d 1. $(arg bags)">
+
+        <!--
+            Remap used topics into original namespace, to make nodes and rviz
+            configs compatible with online experiment.
+        -->
+
+        <remap from="/robot_data/X1/points_slow_filtered/draco" to="/X1/points_slow_filtered/draco"/>
+        <remap from="/robot_data/X2/points_slow_filtered/draco" to="/X2/points_slow_filtered/draco"/>
+        <remap from="/robot_data/X3/points_slow_filtered/draco" to="/X3/points_slow_filtered/draco"/>
+
+        <remap from="/robot_data/X1/local_map_slow/draco" to="/X1/local_map_slow/draco"/>
+        <remap from="/robot_data/X2/local_map_slow/draco" to="/X2/local_map_slow/draco"/>
+        <remap from="/robot_data/X3/local_map_slow/draco" to="/X3/local_map_slow/draco"/>
+
+        <remap from="/robot_data/X1/updated_map/draco" to="/X1/updated_map/draco"/>
+        <remap from="/robot_data/X2/updated_map/draco" to="/X2/updated_map/draco"/>
+        <remap from="/robot_data/X3/updated_map/draco" to="/X3/updated_map/draco"/>
+
+        <remap from="/robot_data/X1/path" to="/X1/path"/>
+        <remap from="/robot_data/X2/path" to="/X2/path"/>
+        <remap from="/robot_data/X3/path" to="/X3/path"/>
+
+        <remap from="/robot_data/X1/control_path" to="/X1/control_path"/>
+        <remap from="/robot_data/X2/control_path" to="/X2/control_path"/>
+        <remap from="/robot_data/X3/control_path" to="/X3/control_path"/>
 
         <remap from="/robot_data/tf" to="/tf"/>
         <remap from="/robot_data/tf_static" to="/tf_static"/>
     </node>
 
+    <!-- Draco to raw -->
+    <include file="$(find subt_virtual)/launch/helpers/for.launch">
+        <arg name="items" value="$(arg robots)"/>
+        <arg name="exclude" value="TEAMBASE"/>
+        <arg name="kv_sep" value="::"/>
+        <arg name="node" value="name::{x}_points_slow_filtered_draco_to_raw,pkg::point_cloud_transport,type::republish,args::draco in:={x}/points_slow_filtered raw out:={x}/points_slow_filtered"/>
+    </include>
+
+    <include file="$(find subt_virtual)/launch/helpers/for.launch">
+        <arg name="items" value="$(arg robots)"/>
+        <arg name="exclude" value="TEAMBASE"/>
+        <arg name="kv_sep" value="::"/>
+        <arg name="node" value="name::{x}_local_map_slow_draco_to_raw,pkg::point_cloud_transport,type::republish,args::draco in:={x}/local_map_slow raw out:={x}/local_map_slow"/>
+    </include>
+
+    <include file="$(find subt_virtual)/launch/helpers/for.launch">
+        <arg name="items" value="$(arg robots)"/>
+        <arg name="exclude" value="TEAMBASE"/>
+        <arg name="kv_sep" value="::"/>
+        <arg name="node" value="name::{x}_updated_map_draco_to_raw,pkg::point_cloud_transport,type::republish,args::draco in:={x}/updated_map raw out:={x}/updated_map"/>
+    </include>
+
+    <!--
     <node name="x1_draco_to_raw" pkg="point_cloud_transport" type="republish"
           args="draco in:=/robot_data/X1/points_slow_filtered_planner
                 raw out:=/robot_data/X1/points_slow_filtered_planner"/>
@@ -27,6 +78,18 @@
     <node name="x3_draco_to_raw" pkg="point_cloud_transport" type="republish"
           args="draco in:=/robot_data/X3/points_slow_filtered_planner
                 raw out:=/robot_data/X3/points_slow_filtered_planner"/>
+-->
 
+    <!--
+    <node name="x1_points_slow_filtered_raw" pkg="point_cloud_transport" type="republish"
+          args="draco in:=points_slow_filtered
+                raw out:=points_slow_filtered"/>
+    <node name="x1_points_slow_filtered_raw" pkg="point_cloud_transport" type="republish"
+          args="draco in:=local_map_slow
+                raw out:=local_map_slow"/>
+    <node name="x1_points_slow_filtered_raw" pkg="point_cloud_transport" type="republish"
+          args="draco in:=map_diff
+                raw out:=map_diff"/>
+    -->
     <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg config)"/>
 </launch>
