@@ -38,6 +38,13 @@ namespace naex
 typedef ValueIterator<Vertex> VertexIter;
 
 typedef ValueIterator<Edge> EdgeIter;
+
+bool bigendian()
+{
+    uint16_t num = 1;
+    return !(*(uint8_t*)&num == 1);
+}
+
 }  // namespace naex
 
 #include <naex/graph.h>
@@ -89,7 +96,7 @@ public:
         last_request_.goal.pose.position.z = std::numeric_limits<double>::quiet_NaN();
         last_request_.tolerance = float(2.);
         configure();
-        ROS_INFO("Waiting for other robots...");
+        ROS_INFO("Initializing. Waiting for other robots...");
         // TODO: Avoid blocking here to be usable as nodelet.
         find_robots(map_frame_, ros::Time(), 15.f);
         Lock lock(initialized_mutex_);
@@ -212,12 +219,6 @@ public:
                                                    &Planner::update_params, this);
 
         get_plan_service_ = nh_.advertiseService("get_plan", &Planner::plan, this);
-    }
-
-    bool bigendian()
-    {
-        uint16_t num = 1;
-        return !(*(uint8_t*)&num == 1);
     }
 
     void bootstrap_map()
@@ -590,7 +591,7 @@ public:
             Lock lock(initialized_mutex_);
             if (!initialized_)
             {
-                ROS_WARN("Won't plan. Waiting for other robots...");
+                ROS_WARN("Won't plan. Waiting for initialization.");
                 return false;
             }
         }
@@ -839,6 +840,14 @@ public:
     void cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
     {
         ROS_INFO("Cloud received (%u points).", cloud->height * cloud->width);
+        {
+            Lock lock(initialized_mutex_);
+            if (!initialized_)
+            {
+                ROS_INFO("Skipping input cloud. Waiting for initialization.");
+                return;
+            }
+        }
 
         // TODO: Build map from all aligned input clouds (interp tf).
         // TODO: Recompute normals.
