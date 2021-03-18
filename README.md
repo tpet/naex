@@ -24,17 +24,26 @@ The last request is (by default) periodically repeated and updated plan is publi
 
 #### Subscribed topics
 
-- `input_cloud` [sensor_msgs/PointCloud2]
+- `input_cloud_0` [[sensor_msgs/PointCloud2](http://docs.ros.org/en/noetic/api/sensor_msgs/html/msg/PointCloud2.html)]  
+  Input point cloud from sensor 0 (remap to the actual sensor topic).
+- `input_cloud_1` [sensor_msgs/PointCloud2]
+- ...
 - `input_map` [sensor_msgs/PointCloud2]
 
 #### Published Topics
 
-- `viewpoints`        Robot viewpoints considered in rewards.
-- `other_viewpoints`  Viewpoints of other robots considered in rewards.
-- `map`               Complete map used for planning, see bit field `flags` for labels.
-- `updated_map`       Only added or removed map points (map deltas).
-- `local_map`         Local map around the robot.
-- `path`              Planned path.
+- `viewpoints` [sensor_msgs/PointCloud2]  
+  Robot viewpoints considered in rewards.
+- `other_viewpoints` [sensor_msgs/PointCloud2]  
+  Viewpoints of other robots considered in rewards.
+- `map` [sensor_msgs/PointCloud2]  
+  Complete map used for planning, see bit field `flags` for labels.
+- `updated_map` [sensor_msgs/PointCloud2]  
+  Only added or removed map points (map deltas).
+- `local_map` [sensor_msgs/PointCloud2]  
+  Local map around the robot.
+- `path` [[nav_msgs/Path](http://docs.ros.org/en/noetic/api/nav_msgs/html/msg/Path.html)]  
+  Planned path.
 
         enum Flags
         {
