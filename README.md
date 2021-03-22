@@ -16,6 +16,8 @@ Start `tolerance` in meters may be specified, which limits the distance from the
 
 If `goal` is not provided, an exploration strategy selects it, maximizing reward/cost ratio.
 The reward captures visiting points from close-enough distance and prefers frontier points.
+Visiting points with the current robot, as opposed to other robots, may be preferred (`self_factor` > 0).
+
 If valid goal is provided, a path is planned to the reachable point which is closest to the specified goal.
 Positions of all robots are considered in assessing whether a point has been observed but robot own observation may be preferred.
 
