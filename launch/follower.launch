@@ -39,6 +39,9 @@
         <rosparam if="$(eval 'x1' in robot_type.lower())" subst_value="true">
             clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
         </rosparam>
+        <rosparam if="$(eval 'marv' in robot_type.lower())" subst_value="true">
+            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
+        </rosparam>
         <rosparam if="$(eval 'x2' in robot_type.lower())" subst_value="true">
             clearance_box: [[-0.4, 0.4], [-0.3, 0.3], [0.15, 0.5]]
         </rosparam>

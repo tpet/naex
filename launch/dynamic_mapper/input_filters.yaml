@@ -29,6 +29,9 @@
     sensorType: 0
 #    angleThreshold: 80
 
+- MaxPointCountDataPointsFilter:
+    maxCount: 10000
+
 - ObservationDirectionDataPointsFilter
 
 - OrientNormalsDataPointsFilter:

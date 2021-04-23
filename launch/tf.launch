@@ -6,6 +6,6 @@
     <include file="$(dirname)/footprint.launch" pass_all_args="true">
         <arg name="base_link" value="$(arg robot)/base_link"/>
         <arg name="base_footprint" value="$(arg robot)/base_footprint"/>
-        <arg name="z_offset" value="$(eval {'tradr': -0.07, 'x1': -0.132, 'explorer_x1': -0.132}.get(robot_type, 0.0))"/>
+        <arg name="z_offset" value="$(eval {'tradr': -0.07, 'x1': -0.132, 'explorer_x1': -0.132, 'marv': -0.15}.get(robot_type, 0.0))"/>
     </include>
 </launch>

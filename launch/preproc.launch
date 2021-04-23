@@ -23,6 +23,8 @@
         <remap from="joint_states" to="joint_state"/>
     </node>
 
+    <arg name="robot_type" default="x1"/>
+
     <!-- TRADR adaptor -->
     <node name="dynamic_point_cloud_relay" pkg="topic_tools" type="relay"
           args="dynamic_point_cloud $(arg points_slow)"
@@ -33,10 +35,28 @@
           args="messages os_cloud_node/points 4.0 $(arg points_slow)"
           respawn="true" respawn_delay="1.0" output="log"/>
 
+    <arg name="points_slow2" value="$(arg points_slow)" unless="$(eval 'marv' in robot_type.lower())" />
+    <arg name="points_slow2" value="$(arg points_slow)_pre" if="$(eval 'marv' in robot_type.lower())" />
+
     <!-- Throttle and voxel filter -->
     <node name="points_throttle" pkg="topic_tools" type="throttle"
-          args="messages $(arg points) 4.0 $(arg points_slow)"
+          args="messages $(arg points) 4.0 $(arg points_slow2)"
           respawn="true" respawn_delay="1.0" output="log"/>
+
+    <node name="points_marv_filter" pkg="nodelet" type="nodelet" args="standalone nav_utils/CropBox" output="log" if="$(eval 'marv' in robot_type.lower())">
+        <rosparam>
+            min_x: -0.5
+            max_x: 0.5
+            min_y: -0.4
+            max_y: 0.4
+            min_z: -0.5
+            max_z: 0.05
+            negative: True
+            keep_organized: True
+        </rosparam>
+        <remap from="~input" to="$(arg points_slow2)"/>
+        <remap from="~output" to="$(arg points_slow)"/>
+    </node>
 
     <node name="points_slow_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
         <rosparam subst_value="true">

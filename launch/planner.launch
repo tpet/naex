@@ -74,6 +74,12 @@
             clearance_high: 0.7
             num_input_clouds: 5
         </rosparam>
+        <rosparam if="$(eval 'marv' in robot_type.lower())" subst_value="true">
+            clearance_radius: 0.6
+            clearance_low: 0.1
+            clearance_high: 0.7
+            num_input_clouds: 1
+        </rosparam>
         <rosparam if="$(eval 'x2' in robot_type.lower())" subst_value="true">
             clearance_radius: 0.5
             clearance_low: 0.1

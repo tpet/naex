@@ -6,7 +6,7 @@
     <arg name="points_slow_filtered" default="points_slow_filtered"/>
     <arg name="points_min_dist" default="0.125"/>
 
-    <group if="$(eval 'x1' in robot_type.lower() or 'x2' in robot_type.lower())">
+    <group if="$(eval 'x1' in robot_type.lower() or 'x2' in robot_type.lower() or 'marv' in robot_type.lower())">
         <node name="odom_setter" pkg="subt_virtual" type="odom_setter">
             <rosparam>
                 pose_cov_diag: [.1, .1, .1, .1, .1, .1]
