@@ -25,24 +25,34 @@
             max_path_dist: [0.8, 2.5, 2.5, 2.5]
             look_ahead: 0.8
             max_speed: 1.0
+            allow_backward: false
             max_force_through_speed: 0.2
             max_angular_rate: 1.5
             keep_path: 3.
             keep_cloud_box: [[-3.0, 3.0], [-3.0, 3.0], [-2.0, 2.0]]
+            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
             show_clearance_pos: [-2, 2]
             min_points_obstacle: 3
 
             force_through_after: 15.
             backtrack_after: 30.
-            allow_backward: True
         </rosparam>
-        <rosparam if="$(eval 'x1' in robot_type.lower())" subst_value="true">
-            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
+
+        <rosparam if="$(eval 'dtr' in robot_type.lower())" subst_value="true">
+            clearance_box: [[-0.5, 0.5], [-0.4, 0.4], [0.2, 0.6]]
         </rosparam>
         <rosparam if="$(eval 'marv' in robot_type.lower())" subst_value="true">
             clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
         </rosparam>
+        <rosparam if="$(eval 'tradr' in robot_type.lower())" subst_value="true">
+            clearance_box: [[-0.5, 0.5], [-0.4, 0.4], [0.2, 0.6]]
+        </rosparam>
+        <rosparam if="$(eval 'x1' in robot_type.lower())" subst_value="true">
+            allow_backward: true
+            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
+        </rosparam>
         <rosparam if="$(eval 'x2' in robot_type.lower())" subst_value="true">
+            allow_backward: true
             clearance_box: [[-0.4, 0.4], [-0.3, 0.3], [0.15, 0.5]]
         </rosparam>
 

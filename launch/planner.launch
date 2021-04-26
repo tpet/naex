@@ -62,10 +62,29 @@
             points_min_dist: $(arg points_min_dist)
             filter_robots: true
 
+            <!-- Have some clearance defaults. -->
+            clearance_radius: 0.6
+            clearance_low: 0.1
+            clearance_high: 0.7
+
             num_input_clouds: 1
             input_queue_size: 15
         </rosparam>
+        <!-- Customize things for particular robots. -->
+        <rosparam if="$(eval 'dtr' in robot_type.lower())" subst_value="true">
+            clearance_radius: 0.5
+            clearance_low: 0.2
+            clearance_high: 0.6
+        </rosparam>
+        <rosparam if="$(eval 'marv' in robot_type.lower())" subst_value="true">
+            clearance_radius: 0.6
+            clearance_low: 0.1
+            clearance_high: 0.7
+        </rosparam>
         <rosparam if="$(eval 'tradr' in robot_type.lower())" subst_value="true">
+            clearance_radius: 0.5
+            clearance_low: 0.2
+            clearance_high: 0.6
             max_cloud_age: 5.0
         </rosparam>
         <rosparam if="$(eval 'x1' in robot_type.lower())" subst_value="true">
@@ -73,12 +92,6 @@
             clearance_low: 0.1
             clearance_high: 0.7
             num_input_clouds: 5
-        </rosparam>
-        <rosparam if="$(eval 'marv' in robot_type.lower())" subst_value="true">
-            clearance_radius: 0.6
-            clearance_low: 0.1
-            clearance_high: 0.7
-            num_input_clouds: 1
         </rosparam>
         <rosparam if="$(eval 'x2' in robot_type.lower())" subst_value="true">
             clearance_radius: 0.5
