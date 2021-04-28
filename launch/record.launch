@@ -2,12 +2,60 @@
 <launch>
     <arg name="robot" default="X1"/>
     <arg name="robot_type" default="x1"/>
+    <arg name="mode" default="none" doc="Recording mode, from {none, inputs, outputs, both}."/>
 
     <node name="throttle_local_map" pkg="topic_tools" type="throttle"
           args="messages local_map 0.1 local_map_slow"
           respawn="true" respawn_delay="1.0" output="log"/>
 
     <!-- Compress point clouds -->
+    <group if="$(eval mode in ['inputs', 'both'])">
+    <rosparam>
+        points:
+          draco:
+            encode_speed: 7
+            decode_speed: 7
+            encode_method: 1
+            deduplicate: true
+            force_quantization: true
+
+            quantization_POSITION: 13
+            quantization_NORMAL: 4
+            quantization_COLOR: 4
+            quantization_TEX_COORD: 8
+            quantization_GENERIC: 8
+
+            expert_attribute_types: false
+            expert_quantization: false
+    </rosparam>
+    <node name="points_draco" pkg="point_cloud_transport" type="republish"
+          args="raw in:=points draco out:=points"
+          respawn="true" respawn_delay="1.0" output="log"/>
+    </group>
+
+    <group if="$(eval mode in ['outputs', 'both'])">
+    <rosparam>
+        points_slow:
+          draco:
+            encode_speed: 7
+            decode_speed: 7
+            encode_method: 1
+            deduplicate: true
+            force_quantization: true
+
+            quantization_POSITION: 13
+            quantization_NORMAL: 4
+            quantization_COLOR: 4
+            quantization_TEX_COORD: 8
+            quantization_GENERIC: 8
+
+            expert_attribute_types: false
+            expert_quantization: false
+    </rosparam>
+    <node name="points_slow_draco" pkg="point_cloud_transport" type="republish"
+          args="raw in:=points_slow draco out:=points_slow"
+          respawn="true" respawn_delay="1.0" output="log"/>
+
     <rosparam>
         points_slow_filtered:
           draco:
@@ -73,19 +121,30 @@
     <node name="updated_map_draco" pkg="point_cloud_transport" type="republish"
           args="raw in:=updated_map draco out:=updated_map"
           respawn="true" respawn_delay="1.0" output="log"/>
+    </group>
 
     <!-- Record -->
+    <arg name="input_topics"
+         value="points/draco
+                /tf
+                /tf_static"/>
+
+    <arg name="output_topics"
+         value="points_slow/draco
+                points_slow_filtered/draco
+                local_map_slow/draco
+                updated_map/draco
+                path
+                control_path
+                cmd_vel"/>
+
     <group if="0">
+    <!-- TODO: Record config. -->
     <node name="rosbag_record_naex" pkg="rosbag" type="record"
           args="--lz4 -o $(find naex)/$(arg robot_type)
-              points_slow_filtered/draco
-              local_map_slow/draco
-              updated_map/draco
-              path
-              control_path
-              cmd_vel
-              /tf
-              /tf_static
+                points/draco
+                /tf
+                /tf_static
           "/>
     </group>
 </launch>
