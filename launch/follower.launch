@@ -38,20 +38,21 @@
             backtrack_after: 30.
         </rosparam>
 
-        <rosparam if="$(eval 'dtr' in robot_type.lower())" subst_value="true">
+        <rosparam if="$(eval robot_type == 'dtr')" subst_value="true">
+            clearance_box: [[-0.5, 0.5], [-0.4, 0.4], [0.2, 0.7]]
+        </rosparam>
+        <rosparam if="$(eval robot_type == 'marv')" subst_value="true">
+            allow_backward: true
+            clearance_box: [[-0.55, 0.55], [-0.4, 0.4], [0.2, 0.7]]
+        </rosparam>
+        <rosparam if="$(eval robot_type == 'tradr')" subst_value="true">
             clearance_box: [[-0.5, 0.5], [-0.4, 0.4], [0.2, 0.6]]
         </rosparam>
-        <rosparam if="$(eval 'marv' in robot_type.lower())" subst_value="true">
-            clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
-        </rosparam>
-        <rosparam if="$(eval 'tradr' in robot_type.lower())" subst_value="true">
-            clearance_box: [[-0.5, 0.5], [-0.4, 0.4], [0.2, 0.6]]
-        </rosparam>
-        <rosparam if="$(eval 'x1' in robot_type.lower())" subst_value="true">
+        <rosparam if="$(eval 'x1' in robot_type)" subst_value="true">
             allow_backward: true
             clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
         </rosparam>
-        <rosparam if="$(eval 'x2' in robot_type.lower())" subst_value="true">
+        <rosparam if="$(eval robot_type == 'x2')" subst_value="true">
             allow_backward: true
             clearance_box: [[-0.4, 0.4], [-0.3, 0.3], [0.15, 0.5]]
         </rosparam>

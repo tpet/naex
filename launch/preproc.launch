@@ -10,20 +10,30 @@
     -->
     <arg name="robot" default="X1"/>
     <arg name="robot_type" default="x1"/>
+
     <arg name="points" default="points"/>
     <arg name="points_slow" default="$(arg points)_slow"/>
     <arg name="points_slow_filtered" default="$(arg points_slow)_filtered"/>
     <arg name="points_min_dist" default="0.125"/>
 
-    <node if="$(eval 'dtr' in robot_type.lower())"
+    <node if="$(eval robot_type == 'dtr')"
           name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
         <rosparam subst_value="true">
-            tf_prefix: X1/
+            tf_prefix: $(arg robot)/
         </rosparam>
         <remap from="joint_states" to="joint_state"/>
     </node>
 
-    <arg name="robot_type" default="x1"/>
+    <group if="$(eval robot_type == 'marv')">
+        <node name="marv_raise_front_left_flipper" pkg="rostopic" type="rostopic"
+              args="pub /X1/flippers_cmd_pos/front_left std_msgs/Float64 -- -1.0"/>
+        <node name="marv_raise_front_right_flipper" pkg="rostopic" type="rostopic"
+              args="pub /X1/flippers_cmd_pos/front_right std_msgs/Float64 -- -1.0"/>
+        <node name="marv_raise_rear_left_flipper" pkg="rostopic" type="rostopic"
+              args="pub /X1/flippers_cmd_pos/rear_left std_msgs/Float64 -- 1.0"/>
+        <node name="marv_raise_rear_right_flipper" pkg="rostopic" type="rostopic"
+              args="pub /X1/flippers_cmd_pos/rear_right std_msgs/Float64 -- 1.0"/>
+    </group>
 
     <!-- TRADR adaptor -->
     <node name="dynamic_point_cloud_relay" pkg="topic_tools" type="relay"
@@ -35,26 +45,41 @@
           args="messages os_cloud_node/points 4.0 $(arg points_slow)"
           respawn="true" respawn_delay="1.0" output="log"/>
 
-    <arg name="points_slow2" value="$(arg points_slow)" unless="$(eval 'marv' in robot_type.lower())" />
-    <arg name="points_slow2" value="$(arg points_slow)_pre" if="$(eval 'marv' in robot_type.lower())" />
+    <arg name="use_robot_box_filter" value="$(eval robot_type in {'dtr', 'marv'})"/>
 
-    <!-- Throttle and voxel filter -->
     <node name="points_throttle" pkg="topic_tools" type="throttle"
-          args="messages $(arg points) 4.0 $(arg points_slow2)"
-          respawn="true" respawn_delay="1.0" output="log"/>
+          args="messages $(arg points) 4.0 $(arg points_slow)"
+          respawn="true" respawn_delay="1.0" output="log">
+        <remap if="$(eval use_robot_box_filter)"
+               from="$(arg points_slow)" to="$(arg points_slow)_pre"/>
+    </node>
 
-    <node name="points_marv_filter" pkg="nodelet" type="nodelet" args="standalone nav_utils/CropBox" output="log" if="$(eval 'marv' in robot_type.lower())">
-        <rosparam>
+    <node if="$(eval use_robot_box_filter)"
+          name="robot_box_filter" pkg="nodelet" type="nodelet"
+          args="standalone cloud_proc/CropBoxImproved">
+        <rosparam subst_value="true">
+            input_frame: $(arg robot)/base_footprint
+            min_z: 0.0
+            negative: true
+            keep_organized: true
+        </rosparam>
+        <rosparam if="$(eval robot_type == 'dtr')" subst_value="true">
+            min_x: -0.475
+            max_x: 0.475
+            min_y: -0.3
+            max_y: 0.3
+            max_z: 0.8
+            output_frame: $(arg robot)/encoder_rotating_link/gpu_lidar
+        </rosparam>
+        <rosparam if="$(eval robot_type == 'marv')" subst_value="true">
             min_x: -0.5
             max_x: 0.5
             min_y: -0.4
             max_y: 0.4
-            min_z: -0.5
-            max_z: 0.05
-            negative: True
-            keep_organized: True
+            max_z: 0.6
+            output_frame: $(arg robot)/laser/laser
         </rosparam>
-        <remap from="~input" to="$(arg points_slow2)"/>
+        <remap from="~input" to="$(arg points_slow)_pre"/>
         <remap from="~output" to="$(arg points_slow)"/>
     </node>
 
@@ -63,8 +88,8 @@
             leaf_size: $(arg points_min_dist)
             filter_field_name: ""
         </rosparam>
-        <remap from="~input" to="points_slow"/>
-        <remap from="~output" to="points_slow_filtered"/>
+        <remap from="~input" to="$(arg points_slow)"/>
+        <remap from="~output" to="$(arg points_slow_filtered)"/>
     </node>
 
     <!-- SubT virtual EXPLORER_X1 RGBD sensors -->

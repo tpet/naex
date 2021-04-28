@@ -71,29 +71,31 @@
             input_queue_size: 15
         </rosparam>
         <!-- Customize things for particular robots. -->
-        <rosparam if="$(eval 'dtr' in robot_type.lower())" subst_value="true">
-            clearance_radius: 0.5
-            clearance_low: 0.2
-            clearance_high: 0.6
-        </rosparam>
-        <rosparam if="$(eval 'marv' in robot_type.lower())" subst_value="true">
-            clearance_radius: 0.6
-            clearance_low: 0.1
+        <rosparam if="$(eval robot_type == 'dtr')" subst_value="true">
+            max_ground_diff_std: 0.1
+            max_ground_abs_diff_mean: 0.1
+            clearance_radius: 0.7
+            clearance_low: 0.15
             clearance_high: 0.7
         </rosparam>
-        <rosparam if="$(eval 'tradr' in robot_type.lower())" subst_value="true">
+        <rosparam if="$(eval robot_type == 'marv')" subst_value="true">
+            clearance_radius: 0.6
+            clearance_low: 0.15
+            clearance_high: 0.7
+        </rosparam>
+        <rosparam if="$(eval robot_type == 'tradr')" subst_value="true">
             clearance_radius: 0.5
             clearance_low: 0.2
             clearance_high: 0.6
             max_cloud_age: 5.0
         </rosparam>
-        <rosparam if="$(eval 'x1' in robot_type.lower())" subst_value="true">
+        <rosparam if="$(eval 'x1' in robot_type)" subst_value="true">
             clearance_radius: 0.6
             clearance_low: 0.1
             clearance_high: 0.7
             num_input_clouds: 5
         </rosparam>
-        <rosparam if="$(eval 'x2' in robot_type.lower())" subst_value="true">
+        <rosparam if="$(eval robot_type == 'x2')" subst_value="true">
             clearance_radius: 0.5
             clearance_low: 0.1
             clearance_high: 0.5
@@ -107,23 +109,13 @@
 
         <remap from="input_cloud_0" to="$(arg points_slow)"/>
 
-        <!--
-        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
-               from="input_cloud_1" to="front_rgbd/points_slow_filtered"/>
-        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
-               from="input_cloud_2" to="left_rgbd/points_slow_filtered"/>
-        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
-               from="input_cloud_3" to="right_rgbd/points_slow_filtered"/>
-        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
-               from="input_cloud_4" to="rear_rgbd/points_slow_filtered"/>
-        -->
-        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+        <remap if="$(eval robot_type == 'explorer_x1')"
                from="input_cloud_1" to="front_rgbd/points_slow"/>
-        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+        <remap if="$(eval robot_type == 'explorer_x1')"
                from="input_cloud_2" to="left_rgbd/points_slow"/>
-        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+        <remap if="$(eval robot_type == 'explorer_x1')"
                from="input_cloud_3" to="right_rgbd/points_slow"/>
-        <remap if="$(eval 'explorer_x1' in robot_type.lower())"
+        <remap if="$(eval robot_type == 'explorer_x1')"
                from="input_cloud_4" to="rear_rgbd/points_slow"/>
 
         <!-- Outputs -->
