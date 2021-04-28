@@ -802,6 +802,10 @@ void voxel_filter(const sensor_msgs::PointCloud2& input,
     voxels.reserve(keep.size());
     for (Index i = 0; i < n_pts; ++i, in_ptr += input.point_step, ++pt_it)
     {
+        if (!std::isfinite(pt_it[0]) || !std::isfinite(pt_it[1]) || !std::isfinite(pt_it[2]))
+        {
+            continue;
+        }
         Value x = std::floor(pt_it[0] / bin_size);
         Value y = std::floor(pt_it[1] / bin_size);
         Value z = std::floor(pt_it[2] / bin_size);
