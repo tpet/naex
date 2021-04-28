@@ -197,7 +197,8 @@ public:
         {
             std::stringstream ss;
             ss << "input_cloud_" << i;
-            auto sub = nh_.subscribe(ss.str(), queue_size_, &Planner::input_cloud_received, this);
+//            auto sub = nh_.subscribe(ss.str(), queue_size_, &Planner::input_cloud_received, this);
+            auto sub = nh_.subscribe(ss.str(), queue_size_, &Planner::input_cloud_received_safe, this);
             input_cloud_subs_.push_back(sub);
         }
 
@@ -1084,7 +1085,6 @@ public:
 //        }
 //    }
 
-//    void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& cloud)
     void input_cloud_received(const sensor_msgs::PointCloud2::ConstPtr& input)
     {
         const auto age = (ros::Time::now() - input->header.stamp).toSec();
@@ -1098,7 +1098,7 @@ public:
         check_initialized();
         sensor_msgs::PointCloud2 step_filtered;
         step_subsample(*input, 1024, 1024, step_filtered);
-//
+
         auto cloud = std::make_shared<sensor_msgs::PointCloud2>();
         voxel_filter(step_filtered, map_.points_min_dist_, *cloud);
 
@@ -1229,6 +1229,27 @@ public:
 //        }
         send_map(cloud->header.stamp);
 //        send
+    }
+
+    void input_cloud_received_safe(const sensor_msgs::PointCloud2::ConstPtr& input)
+    {
+        try
+        {
+            input_cloud_received(input);
+        }
+        catch (const Exception& ex)
+        {
+            ROS_ERROR("Input cloud processing failed: %s\n%s",
+                      ex.what(), ex.stacktrace().c_str());
+        }
+        catch (const std::runtime_error& ex)
+        {
+            ROS_ERROR("Input cloud processing failed: %s", ex.what());
+        }
+        catch (...)
+        {
+            ROS_ERROR("Input cloud processing failed with an unknown exception.");
+        }
     }
 
 protected:

@@ -617,6 +617,10 @@ public:
                                     const geometry_msgs::Transform& cloud_to_map_tf)
 //                                    const C* camera)
     {
+        if (cloud.width == 0)
+        {
+            throw Exception("Zero cloud width.");
+        }
         Timer t;
         Timer t_part;
 
