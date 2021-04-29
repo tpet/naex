@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+    <!--
+    Usage in directory with bag files:
+    bags=$(ls $(pwd)/*bag) roslaunch naex playback.launch rate:=20
+
+    bags="/home/petrito1/workspace/skoda_factory_mapping/rozlivek/svar_2021-03-26-10-31-33.bag" ros roslaunch play_skoda.launch
+    -->
+    <arg name="bags" default="$(optenv bags)"/>
+    <arg name="rate" default="1."/>
+    <arg name="config" default="$(dirname)/skoda.rviz"/>
+
+    <arg name="robot" default="X1"/>
+    <arg name="robot_type" default="explorer_x1"/>
+    <arg name="robots" default="$(arg robot)"/>
+
+    <param name="use_sim_time" value="true"/>
+
+    <node name="static_transform_mux" pkg="static_transform_mux" type="static_transform_mux"/>
+
+    <node name="rosbag_play" pkg="rosbag" type="play" output="screen"
+          args="--clock -r $(arg rate) -d 1. $(arg bags)"/>
+
+    <group ns="$(arg robot)">
+        <include file="$(dirname)/mapper.launch" pass_all_args="true"/>
+    </group>
+
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg config)"/>
+</launch>
