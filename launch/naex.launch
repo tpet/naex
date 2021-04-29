@@ -11,5 +11,12 @@
     <include file="$(dirname)/slam.launch" pass_all_args="true"/>
     <include file="$(dirname)/planner.launch" pass_all_args="true"/>
     <include file="$(dirname)/follower.launch" pass_all_args="true"/>
-    <include file="$(dirname)/record.launch" pass_all_args="true"/>
+    <include file="$(dirname)/record.launch" pass_all_args="true">
+        <arg name="mode" value="both"/>
+    </include>
+
+    <!-- RPZ prediction and planning -->
+    <include if="0" file="$(find rpz_planning)/launch/rpz_predictor.launch" pass_all_args="true"/>
+    <include if="0" file="$(find rpz_planning)/launch/rpz_planner.launch" pass_all_args="true"/>
+    <include if="0" file="$(find rpz_planning)/launch/record.launch" pass_all_args="true"/>
 </launch>
