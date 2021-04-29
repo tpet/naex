@@ -32,7 +32,7 @@
             map_frame: subt
             robot_frame: $(arg robot)/base_footprint
             max_cloud_age: 2.0
-            input_range: 10.0
+            input_range: 15.0
             max_pitch: 0.611
             max_roll: 0.524
             neighborhood_knn: 32
