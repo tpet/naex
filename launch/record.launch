@@ -2,14 +2,14 @@
 <launch>
     <arg name="robot" default="X1"/>
     <arg name="robot_type" default="x1"/>
-    <arg name="mode" default="none" doc="Recording mode, from {none, inputs, outputs, both}."/>
+    <arg name="mode" default="none" doc="Recording mode, from {none, input, output, both}."/>
 
     <node name="throttle_local_map" pkg="topic_tools" type="throttle"
           args="messages local_map 0.1 local_map_slow"
           respawn="true" respawn_delay="1.0" output="log"/>
 
     <!-- Compress point clouds -->
-    <group if="$(eval mode in ['inputs', 'both'])">
+    <group if="$(eval mode in ['input', 'both'])">
     <rosparam>
         points:
           draco:
@@ -33,7 +33,7 @@
           respawn="true" respawn_delay="1.0" output="log"/>
     </group>
 
-    <group if="$(eval mode in ['outputs', 'both'])">
+    <group if="$(eval mode in ['output', 'both'])">
     <rosparam>
         points_slow:
           draco:
@@ -125,26 +125,24 @@
 
     <!-- Record -->
     <arg name="input_topics"
-         value="points/draco
+         value="/$(arg robot)/points/draco
                 /tf
                 /tf_static"/>
 
     <arg name="output_topics"
-         value="points_slow/draco
-                points_slow_filtered/draco
-                local_map_slow/draco
-                updated_map/draco
-                path
-                control_path
-                cmd_vel"/>
+         value="/$(arg robot)/points_slow/draco
+                /$(arg robot)/points_slow_filtered/draco
+                /$(arg robot)/local_map_slow/draco
+                /$(arg robot)/updated_map/draco
+                /$(arg robot)/path
+                /$(arg robot)/control_path
+                /$(arg robot)/cmd_vel"/>
 
-    <group if="0">
-    <!-- TODO: Record config. -->
-    <node name="rosbag_record_naex" pkg="rosbag" type="record"
-          args="--lz4 -o $(find naex)/$(arg robot_type)
-                points/draco
-                /tf
-                /tf_static
-          "/>
-    </group>
+    <node if="$(eval mode in {'input', 'both'})"
+          name="record_naex_input" pkg="rosbag" type="record"
+          args="--lz4 -o $(find naex)/$(arg robot_type)_input $(arg input_topics)"/>
+    <node if="$(eval mode in {'output', 'both'})"
+          name="record_naex_output" pkg="rosbag" type="record"
+          args="--lz4 -o $(find naex)/$(arg robot_type)_output $(arg output_topics)"/>
+
 </launch>
