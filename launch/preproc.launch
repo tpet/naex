@@ -25,14 +25,15 @@
     </node>
 
     <group if="$(eval robot_type == 'marv')">
+        <arg name="flipper_pos" value="1.571"/>
         <node name="marv_raise_front_left_flipper" pkg="rostopic" type="rostopic"
-              args="pub /X1/flippers_cmd_pos/front_left std_msgs/Float64 -- -1.0"/>
+              args="pub /X1/flippers_cmd_pos/front_left std_msgs/Float64 -- -$(arg flipper_pos)"/>
         <node name="marv_raise_front_right_flipper" pkg="rostopic" type="rostopic"
-              args="pub /X1/flippers_cmd_pos/front_right std_msgs/Float64 -- -1.0"/>
+              args="pub /X1/flippers_cmd_pos/front_right std_msgs/Float64 -- -$(arg flipper_pos)"/>
         <node name="marv_raise_rear_left_flipper" pkg="rostopic" type="rostopic"
-              args="pub /X1/flippers_cmd_pos/rear_left std_msgs/Float64 -- 1.0"/>
+              args="pub /X1/flippers_cmd_pos/rear_left std_msgs/Float64 -- $(arg flipper_pos)"/>
         <node name="marv_raise_rear_right_flipper" pkg="rostopic" type="rostopic"
-              args="pub /X1/flippers_cmd_pos/rear_right std_msgs/Float64 -- 1.0"/>
+              args="pub /X1/flippers_cmd_pos/rear_right std_msgs/Float64 -- $(arg flipper_pos)"/>
     </group>
 
     <!-- TRADR adaptor -->
