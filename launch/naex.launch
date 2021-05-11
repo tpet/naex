@@ -5,6 +5,11 @@
     <arg name="robots" default="$(arg robot)"/>
     <arg name="points_min_dist" default="0.125"/>
     <arg name="cmd_vel" default="cmd_vel"/>
+    <arg name="path" default="path"/>
+
+    <node name="subt_frame_publisher" pkg="subt_virtual" type="subt_frame_publisher">
+        <param name="robot_name" value="$(arg robot)"/>
+    </node>
 
     <include file="$(dirname)/tf.launch" pass_all_args="true"/>
     <include file="$(dirname)/preproc.launch" pass_all_args="true"/>
@@ -16,6 +21,7 @@
     </include>
 
     <!-- RPZ prediction and planning -->
+    <!-- <include if="1" file="$(find rpz_planning)/launch/rpz_predictor_leveller.launch" pass_all_args="true"/> -->
     <include if="0" file="$(find rpz_planning)/launch/rpz_predictor.launch" pass_all_args="true"/>
     <include if="0" file="$(find rpz_planning)/launch/rpz_planner.launch" pass_all_args="true"/>
     <include if="0" file="$(find rpz_planning)/launch/record.launch" pass_all_args="true"/>

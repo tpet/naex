@@ -4,6 +4,8 @@
     <arg name="robot_type" default="x1"/>
     <arg name="cmd_vel" default="cmd_vel"
          doc="Topic to which to publish velocity commands."/>
+    <arg name="path" default="path"
+         doc="Path topic to follow."/>
 
     <node name="path_follower" pkg="naex" type="path_follower"
           respawn="true" respawn_delay="1.0" output="screen">
@@ -59,7 +61,7 @@
 
         <!-- Inputs -->
         <remap from="cloud" to="points_slow_filtered"/>
-        <remap from="path" to="path"/>
+        <remap from="path" to="$(arg path)"/>
 
         <!-- Outputs -->
         <remap from="clearance" to="clearance"/>
