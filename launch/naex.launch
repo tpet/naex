@@ -7,10 +7,6 @@
     <arg name="cmd_vel" default="cmd_vel"/>
     <arg name="path" default="path"/>
 
-    <node name="subt_frame_publisher" pkg="subt_virtual" type="subt_frame_publisher">
-        <param name="robot_name" value="$(arg robot)"/>
-    </node>
-
     <include file="$(dirname)/tf.launch" pass_all_args="true"/>
     <include file="$(dirname)/preproc.launch" pass_all_args="true"/>
     <include file="$(dirname)/slam.launch" pass_all_args="true"/>
