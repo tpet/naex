@@ -3,7 +3,7 @@
     <arg name="robot" default="X1"/>
     <arg name="robot_type" default="explorer_x1"/>
     <arg name="icp" default="point_to_plane" doc="ICP mode from {point_to_plane, point_to_point}."/>
-    <arg name="points_slow_filtered" default="points_slow_filtered"/>
+    <arg name="points" default="points_slow_filtered"/>
     <arg name="points_min_dist" default="0.125"/>
 
     <node name="dynamic_mapper" type="dynamic_mapper" pkg="ethzasl_icp_mapper" output="log">
@@ -38,6 +38,6 @@
         <param name="maxDistNewPoint" value="$(arg points_min_dist)"/>  <!-- 0.07 -->
         <param name="sensorMaxRange" value="50.0"/>
 
-        <remap from="cloud_in" to="$(arg points_slow_filtered)"/>
+        <remap from="cloud_in" to="$(arg points)"/>
     </node>
 </launch>

@@ -3,7 +3,7 @@
     <arg name="robot" default="X1"/>
     <arg name="robots" default="$(arg robot)"/>
     <arg name="robot_type" default="x1"/>
-    <arg name="points_slow" default="points_slow"/>
+    <arg name="points" default="points_slow"/>
     <arg name="points_min_dist" default="0.125"/>
 
     <include file="$(find subt_virtual)/launch/helpers/for.launch">
@@ -108,7 +108,7 @@
         <!-- Inputs -->
         <remap from="input_map" to="~input_map"/>  <!-- Don't use map input. -->
 
-        <remap from="input_cloud_0" to="$(arg points_slow)"/>
+        <remap from="input_cloud_0" to="$(arg points)"/>
 
         <remap if="$(eval robot_type == 'explorer_x1')"
                from="input_cloud_1" to="front_rgbd/points_slow"/>

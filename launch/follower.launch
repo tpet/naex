@@ -6,6 +6,7 @@
          doc="Topic to which to publish velocity commands."/>
     <arg name="path" default="path"
          doc="Path topic to follow."/>
+    <arg name="points" default="points_slow_filtered"/>
 
     <node name="path_follower" pkg="naex" type="path_follower"
           respawn="true" respawn_delay="1.0" output="screen">
@@ -60,8 +61,8 @@
         </rosparam>
 
         <!-- Inputs -->
-        <remap from="cloud" to="points_slow_filtered"/>
         <remap from="path" to="$(arg path)"/>
+        <remap from="cloud" to="$(arg points)"/>
 
         <!-- Outputs -->
         <remap from="clearance" to="clearance"/>
