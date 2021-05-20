@@ -72,6 +72,7 @@
         </rosparam>
         <!-- Customize things for particular robots. -->
         <rosparam if="$(eval robot_type == 'dtr')" subst_value="true">
+            max_cloud_age: 5.0
             max_ground_diff_std: 0.1
             max_ground_abs_diff_mean: 0.1
             clearance_radius: 0.7
