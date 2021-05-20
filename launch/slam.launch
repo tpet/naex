@@ -6,41 +6,6 @@
     <arg name="points_slow_filtered" default="points_slow_filtered"/>
     <arg name="points_min_dist" default="0.125"/>
 
-<!--    <group if="$(eval 'x1' in robot_type.lower() or 'x2' in robot_type.lower())">-->
-    <group>
-        <node name="odom_setter" pkg="subt_virtual" type="odom_setter">
-            <rosparam>
-                pose_cov_diag: [.1, .1, .1, .1, .1, .1]
-                twist_cov_diag: [.1, .1, .1, .1, .1, .1]
-            </rosparam>
-            <remap from="input" to="odom"/>
-            <remap from="output" to="uncertain_odom"/>
-        </node>
-
-        <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="robot_pose_ekf">
-            <param name="output_frame" value="$(arg robot)/odom"/>
-            <!--
-            According to docs base_footprint should be used.
-            TODO: Create and use $(arg robot)/base_fooprint frame?
-            <param name="base_footprint_frame" value="$(arg robot)/base_footprint"/>
-            <param name="base_footprint_frame" value="$(arg robot)/base_link"/>
-            NB: Need to use robot frame like X1, pose publisher then publishes
-            X1->X1/base_link transform. Some robot links seems to be directly
-            below X1 frame.
-            -->
-            <param name="base_footprint_frame" value="$(arg robot)"/>
-            <param name="freq" value="20.0"/>
-            <param name="sensor_timeout" value="1.0"/>
-            <param name="odom_used" value="true"/>
-            <param name="imu_used" value="true"/>
-            <param name="vo_used" value="false"/>
-
-            <remap from="odom" to="uncertain_odom"/>
-            <remap from="imu_data" to="imu/data"/>
-            <remap from="~odom_combined" to="imu_pose"/>
-        </node>
-    </group>
-
     <node name="dynamic_mapper" type="dynamic_mapper" pkg="ethzasl_icp_mapper" output="log">
         <param name="subscribe_scan" value="false"/>
         <param name="inputFiltersConfig" value="$(dirname)/dynamic_mapper/input_filters.yaml"/>
