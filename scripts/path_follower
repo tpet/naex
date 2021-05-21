@@ -257,14 +257,14 @@ class PathFollower(object):
 
     def check_pose_clearance(self, pose):
         if self.min_points_obstacle < 1:
-            return True
+            return True, None
         # Convert cloud into given pose with odom/no-wait as fixed frame.
         # Check robot extents.
         with self.cloud_lock:
             cloud = self.cloud
         if cloud is None:
             rospy.loginfo('No cloud to check for obstacles.')
-            return
+            return None, None
         tf = numpify(pose)
         # tf = np.linalg.inv(tf)
         tf[:3, :3] = tf[:3, :3].T
