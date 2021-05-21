@@ -316,7 +316,7 @@ class PathFollower(object):
                 = self.clearance_box[:, 1] - self.clearance_box[:, 0]
             free, pts = self.check_pose_clearance(pose.pose)
             marker.color = ColorRGBA(0., 1., 0., 0.25) \
-                if free else marker.color = ColorRGBA(1., 0., 0., 0.25)
+                if free else ColorRGBA(1., 0., 0., 0.25)
             msg.markers.append(marker)
 
             if pts:
