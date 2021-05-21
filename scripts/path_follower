@@ -7,13 +7,23 @@ An empty plan means no action (stopping the robot).
 """
 from __future__ import absolute_import, division, print_function
 # from exploration.msg import Path
-from geometry_msgs.msg import Pose, PoseStamped, Pose2D, Quaternion, Transform, TransformStamped, Twist
+from geometry_msgs.msg import (
+    Point,
+    Pose,
+    PoseStamped,
+    Pose2D,
+    Quaternion,
+    Transform,
+    TransformStamped,
+    Twist
+)
 from nav_msgs.msg import Path
 import numpy as np
 import rospy
 from ros_numpy import msgify, numpify
 from scipy.spatial import cKDTree
 from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import ColorRGBA
 import tf2_ros
 from threading import RLock
 from timeit import default_timer as timer
@@ -246,6 +256,8 @@ class PathFollower(object):
                           msg.height * msg.width, cloud.shape[1], t)
 
     def check_pose_clearance(self, pose):
+        if self.min_points_obstacle < 1:
+            return True
         # Convert cloud into given pose with odom/no-wait as fixed frame.
         # Check robot extents.
         with self.cloud_lock:
@@ -260,7 +272,10 @@ class PathFollower(object):
         local_cloud = np.matmul(tf, self.cloud)
         obstacles = ((local_cloud[:3, :] >= self.clearance_box[:, :1]).all(axis=0)
                      & (local_cloud[:3, :] <= self.clearance_box[:, 1:]).all(axis=0))
-        return obstacles.sum() < self.min_points_obstacle
+        n_obstacles = obstacles.sum()
+        free = n_obstacles < self.min_points_obstacle
+        pts = local_cloud[:3, obstacles] if n_obstacles else None
+        return free, pts
 
     def publish_clearance(self, path_msg=None, ind=slice(None)):
         t = timer()
@@ -270,6 +285,20 @@ class PathFollower(object):
         if not path_msg:
             with self.path_lock:
                 path_msg = self.path_msg
+
+        pts_marker = Marker()
+        pts_marker.header.frame_id = path_msg.header.frame_id
+        pts_marker.header.stamp = now
+        pts_marker.ns = '%s/obstacles' % self.robot_frame
+        pts_marker.id = 0
+        pts_marker.action = Marker.MODIFY
+        # pts_marker.type = Marker.POINTS
+        pts_marker.type = Marker.SPHERE_LIST
+        pts_marker.scale.x = 0.05
+        pts_marker.scale.y = 0.05
+        pts_marker.scale.z = 0.05
+        pts_marker.pose.orientation.w = 1.0
+
         for i, pose in enumerate(path_msg.poses[ind]):
             marker = Marker()
             marker.header.frame_id = path_msg.header.frame_id
@@ -285,11 +314,20 @@ class PathFollower(object):
             marker.pose = msgify(Pose, pose_arr)
             marker.scale.x, marker.scale.y, marker.scale.z \
                 = self.clearance_box[:, 1] - self.clearance_box[:, 0]
-            if self.check_pose_clearance(pose.pose):
-                marker.color.r, marker.color.g, marker.color.b, marker.color.a = 0., 1., 0., 0.25
+            free, pts = self.check_pose_clearance(pose.pose)
+            if free
+                # marker.color.r, marker.color.g, marker.color.b, marker.color.a = 0., 1., 0., 0.25
+                marker.color = ColorRGBA(0., 1., 0., 0.25)
             else:
-                marker.color.r, marker.color.g, marker.color.b, marker.color.a = 1., 0., 0., 0.25
+                # marker.color.r, marker.color.g, marker.color.b, marker.color.a = 1., 0., 0., 0.25
+                marker.color = ColorRGBA(1., 0., 0., 0.25)
             msg.markers.append(marker)
+
+            if pts:
+                for p in pts.T:
+                    pts_marker.points.append(Point(*p))
+
+        msg.markers.append(pts_marker)
 
         # Clean up previous clearance.
         marker = Marker()
@@ -370,7 +408,7 @@ class PathFollower(object):
 
                 show_ind = slice(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
                 self.publish_clearance(self.path_msg, show_ind)
-                if not self.check_pose_clearance(self.path_msg.poses[i].pose):
+                if not self.check_pose_clearance(self.path_msg.poses[i].pose)[0]:
                     if self.stuck_since is None:
                         self.stuck_since = rospy.Time.now()
                     stuck_duration = (rospy.Time.now() - self.stuck_since).to_sec()
