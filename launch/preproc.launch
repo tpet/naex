@@ -52,6 +52,14 @@
             max_z: 0.8
             output_frame: $(arg robot)/encoder_rotating_link/gpu_lidar
         </rosparam>
+        <rosparam if="$(eval robot_type == 'marmotte')" subst_value="true">
+            min_x: -0.475
+            max_x: 0.475
+            min_y: -0.3
+            max_y: 0.3
+            max_z: 0.8
+            output_frame: $(arg robot)/sensor_rack/front_lidar
+        </rosparam>
         <rosparam if="$(eval robot_type == 'marv')" subst_value="true">
             min_x: -0.5
             max_x: 0.5
