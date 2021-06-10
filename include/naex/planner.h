@@ -776,7 +776,7 @@ public:
             // TODO: Parametrize the areas.
             if (map_.cloud_[v].position_[0] >= -60. && map_.cloud_[v].position_[0] <= 0.
                 && map_.cloud_[v].position_[1] >= -30. && map_.cloud_[v].position_[1] <= 30.
-                && map_.cloud_[v].position_[2] >= -30. && map_.cloud_[v].position_[0] <= 30.)
+                && map_.cloud_[v].position_[2] >= -30. && map_.cloud_[v].position_[2] <= 30.)
             {
                 Value dist_from_origin = ConstVec3Map(map_.cloud_[v].position_).norm();
                 map_.cloud_[v].reward_ /= (1. + std::pow(dist_from_origin, 2.f));
