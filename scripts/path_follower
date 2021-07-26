@@ -89,6 +89,7 @@ class PathFollower(object):
         self.max_force_through_speed = rospy.get_param('~max_force_through_speed', .25)
         self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)  # rad/s
         self.keep_path = rospy.get_param('~keep_path', 30.0)
+        self.increasing_waypoint_index = rospy.get_param('~increasing_waypoint_index', True)
         # Keep only points inside a box for clearance check.
         keep_cloud_box = rospy.get_param('~keep_cloud_box', [[-4.0, 4.0],
                                                              [-4.0, 4.0],
@@ -108,6 +109,8 @@ class PathFollower(object):
         self.path_msg = None  # Path message
         self.path = None  # n-by-3 path position array
         self.path_x_index = None  # Index of above
+        # Waypoint index (into the path)
+        self.waypoint_index = None
         self.path_traversed = []
         self.stuck_since = None
         self.idle_since = None
@@ -167,6 +170,7 @@ class PathFollower(object):
             self.path_msg = None
             self.path = None
             self.path_x_index = None
+            self.waypoint_index = None
 
     def path_received(self, msg):
         assert isinstance(msg, Path)
@@ -401,6 +405,10 @@ class PathFollower(object):
                     new_goal = self.path[i:i+1, :].T
                     look_ahead += np.linalg.norm(new_goal - goal)
                     goal = new_goal
+
+                if self.increasing_waypoint_index and self.waypoint_index:
+                    i = max(i, self.waypoint_index)
+                self.waypoint_index = i
 
                 show_ind = slice(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
                 self.publish_clearance(self.path_msg, show_ind)
