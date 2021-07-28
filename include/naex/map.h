@@ -168,8 +168,9 @@ public:
         }
         // Initialize with distance computed in NN search.
         // Multiple with relative pitch and roll.
-        c *= 1 + inclination_penalty_ * std::abs(pitch) / max_pitch_;
-        c *= 1 + inclination_penalty_ * std::abs(roll) / max_roll_;
+//        c *= 1 + inclination_penalty_ * std::abs(pitch) / max_pitch_;
+//        c *= 1 + inclination_penalty_ * std::abs(roll) / max_roll_;
+        c += c * (std::abs(pitch) / max_pitch_ + std::abs(roll) / max_roll_);
         // Penalize distance to obstacles and other actors.
         if (std::isfinite(cloud_[v1].dist_to_obstacle_))
         {
