@@ -291,26 +291,6 @@ namespace naex
         }
     }
 
-    template<typename T>
-    flann::Matrix<T> flann_matrix_view(
-        sensor_msgs::PointCloud2& cloud,
-        const std::string& field,
-        const uint32_t count = 1)
-    {
-        sensor_msgs::PointCloud2Iterator<T> it(cloud, field);
-        return flann::Matrix<T>(&it[0], cloud.height * cloud.width, count, cloud.point_step);
-    }
-
-    template<typename T>
-    flann::Matrix<T> const_flann_matrix_view(
-        const sensor_msgs::PointCloud2& cloud,
-        const std::string& field,
-        const uint32_t count = 1)
-    {
-        sensor_msgs::PointCloud2ConstIterator<T> it(cloud, field);
-        return flann::Matrix<T>(&it[0], cloud.height * cloud.width, count, cloud.point_step);
-    }
-
     void print_cloud_summary(const sensor_msgs::PointCloud2& cloud)
     {
         sensor_msgs::PointCloud2ConstIterator<float> x_begin(cloud, "x");
