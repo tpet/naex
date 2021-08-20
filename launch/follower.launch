@@ -44,6 +44,12 @@
         <rosparam if="$(eval robot_type == 'dtr')" subst_value="true">
             clearance_box: [[-0.5, 0.5], [-0.4, 0.4], [0.2, 0.7]]
         </rosparam>
+        <rosparam if="$(eval robot_type == 'jeanine')" subst_value="true">
+            max_path_dist: [0.8, 1.5, 1.5, 1.5]
+            max_speed: 1.0
+            max_angular_rate: 1.5
+            clearance_box: [[-0.4, 0.4], [-0.3, 0.3], [0.2, 0.6]]
+        </rosparam>
         <rosparam if="$(eval robot_type == 'marv')" subst_value="true">
             allow_backward: true
             clearance_box: [[-0.55, 0.55], [-0.4, 0.4], [0.2, 0.7]]
