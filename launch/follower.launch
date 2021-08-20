@@ -37,8 +37,8 @@
             show_clearance_pos: [-2, 2]
             min_points_obstacle: 3
 
-            force_through_after: 15.
-            backtrack_after: 30.
+            force_through_after: 10.
+            backtrack_after: 20.
         </rosparam>
 
         <rosparam if="$(eval robot_type == 'dtr')" subst_value="true">

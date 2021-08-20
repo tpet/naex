@@ -47,12 +47,16 @@
             min_dist_to_obstacle: 0.0
 
             viewpoints_update_freq: 1.
-            min_vp_distance: 2.
-            max_vp_distance: 5.
+            min_vp_distance: 2.0
+            max_vp_distance: 6.0
+            collect_rewards: true
+            full_coverage_dist: 3.0
+            coverage_dist_spread: 1.5
             self_factor: 0.5
             path_cost_pow: 0.75
             planning_freq: 0.5
             random_start: false
+            bootstrap_z: .nan
 
             min_num_empty: 4
             min_empty_ratio: 2.0
@@ -96,10 +100,11 @@
             clearance_high: 0.7
             num_input_clouds: 5
         </rosparam>
-        <rosparam if="$(eval robot_type == 'x2')" subst_value="true">
+        <rosparam if="$(eval robot_type == 'x2' or robot_type == 'jeanine')" subst_value="true">
             clearance_radius: 0.5
             clearance_low: 0.1
             clearance_high: 0.5
+            num_input_clouds: 2
         </rosparam>
 
         <!-- Services -->
@@ -118,6 +123,9 @@
                from="input_cloud_3" to="right_rgbd/points_slow"/>
         <remap if="$(eval robot_type == 'explorer_x1')"
                from="input_cloud_4" to="rear_rgbd/points_slow"/>
+
+        <remap if="$(eval robot_type == 'jeanine')"
+               from="input_cloud_1" to="rgbd_front/points_slow"/>
 
         <!-- Outputs -->
         <!-- Collected robot viewpoints -->

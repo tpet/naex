@@ -209,6 +209,7 @@ class PathFollower(object):
         path = np.array([slots(p.pose.position) for p in msg.poses])
         path_x_index = cKDTree(path)
         with self.path_lock:
+            self.clear_path()
             self.path_msg = msg
             self.path = path
             self.path_x_index = path_x_index
@@ -477,7 +478,8 @@ class PathFollower(object):
 
             # Linear velocity
             # p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
-            p_dist = 1.5 * max(np.cos(3. * angle), 0.)
+            # p_dist = 1.5 * max(np.cos(3. * angle), 0.)
+            p_dist = 1.5 * np.exp(-(angle/0.25)**2)
             max_speed = self.max_speed if self.stuck_since is None else self.max_force_through_speed
             speed = vel_sign * np.clip(p_dist * dist, 0., max_speed)
 

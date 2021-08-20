@@ -113,20 +113,28 @@ public:
         return false;
     }
 
-    inline Cost edge_cost(const Edge& e) const
+    inline bool valid_cost(const Value cost) const
+    {
+        return cost > 0;
+    }
+
+    inline Cost compute_edge_cost(const Edge& e)
     {
         const auto v0 = source(e);
         const auto v1_index = target_index(e);
         const auto v1 = target(e);
-//            if (labels_[v0] != TRAVERSABLE || labels_[v1] != TRAVERSABLE)
-//        if (cloud_[v1].functional_label_ != TRAVERSABLE)
+
+        if (v0 == v1)
+        {
+            ROS_WARN_THROTTLE(1.0, "Graph loop at vertex %i.", v0);
+            return std::numeric_limits<Cost>::infinity();
+        }
         if (!(cloud_[v1].flags_ & TRAVERSABLE) || (cloud_[v1].flags_ & EDGE))
         {
             return std::numeric_limits<Cost>::infinity();
         }
 //        Cost d = std::sqrt(cloud_[v0].distances_[v1_index]);
         Cost c = graph_[v0].distances_[v1_index];
-//        if (c > clearance_radius_)
         if (c > 3 * points_min_dist_)
         {
             return std::numeric_limits<Cost>::infinity();
@@ -145,7 +153,7 @@ public:
         // Multiple with relative pitch and roll.
 //        c *= 1 + inclination_penalty_ * std::abs(pitch) / max_pitch_;
 //        c *= 1 + inclination_penalty_ * std::abs(roll) / max_roll_;
-        c += c * (std::abs(pitch) / max_pitch_ + std::abs(roll) / max_roll_);
+        c += c * inclination_penalty_ * (std::abs(pitch) / max_pitch_ + std::abs(roll) / max_roll_);
         // Penalize distance to obstacles and other actors.
         if (std::isfinite(cloud_[v1].dist_to_obstacle_))
         {
@@ -162,6 +170,14 @@ public:
 //                : 1.f;
         // TODO: Make distance correspond to expected travel time.
         return c;
+    }
+
+    inline Cost edge_cost(const Edge& e) const
+    {
+        const auto v0 = source(e);
+        const auto v1_index = target_index(e);
+        const auto& stored = graph_[v0].costs_[v1_index];
+        return valid_cost(stored) ? stored : std::numeric_limits<Value>::infinity();
     }
 
     void update_index()
@@ -226,9 +242,9 @@ public:
                                        3,
                                        sizeof(Neighborhood));
         flann::Matrix<Index> neighbors(dirty_cloud[0].neighbors_,
-                                     dirty_cloud.size(),
-                                     Neighborhood::K_NEIGHBORS,
-                                     sizeof(Neighborhood));
+                                       dirty_cloud.size(),
+                                       Neighborhood::K_NEIGHBORS,
+                                       sizeof(Neighborhood));
         flann::Matrix<Value> distances(dirty_cloud[0].distances_,
                                        dirty_cloud.size(),
                                        Neighborhood::K_NEIGHBORS,
@@ -264,11 +280,38 @@ public:
                            (*point_it).distances_ + Neighborhood::K_NEIGHBORS,
                            graph_[*it].distances_,
                            [](const Value x) -> Value { return std::sqrt(x); });
+            // Invalidate computed edge costs to enforce recomputation.
+            std::fill(graph_[*it].costs_,
+                      graph_[*it].costs_ + Neighborhood::K_NEIGHBORS,
+                      std::numeric_limits<Value>::quiet_NaN());
         }
 
         ROS_DEBUG("Neighborhood updated at %lu / %lu pts (%.3f s).",
                   dirty_cloud.size(), cloud_.size(), t.seconds_elapsed());
         // TODO: Update features and labels.
+    }
+
+    template<typename It>
+    void compute_edge_costs(It begin, It end)
+    {
+        Timer t;
+        size_t n = 0;
+        for (It it = begin; it != end; ++it)
+        {
+            ++n;
+            const auto v0 = *it;
+            Index e0 = v0 * Neighborhood::K_NEIGHBORS;
+//            Index e1 = (v0 + 1) * Neighborhood::K_NEIGHBORS;
+//            for (Index e = e0, i = 0; e < e1; ++e, ++v1)
+//            {
+//                graph_[v0].costs_[v1] =  edge_cost(e);
+//            }
+            for (Index i = 0, e = e0; i < Neighborhood::K_NEIGHBORS; ++i, ++e)
+            {
+                graph_[v0].costs_[i] = compute_edge_cost(e);
+            }
+        }
+        ROS_INFO("Edge costs computed for %lu vertices (%.3f s).", n, t.seconds_elapsed());
     }
 
     inline Vertex num_vertices() const
@@ -316,20 +359,10 @@ public:
         Lock lock(dirty_mutex_);
         Timer t;
 
-        Timer t_part;
         update_neighborhood(dirty_indices_.begin(), dirty_indices_.end());
-//        ROS_DEBUG("Graph updated at %lu points (%.6f s).",
-//                  dirty_indices_.size(), t_part.seconds_elapsed());
-
-        t_part.reset();
         compute_features(dirty_indices_.begin(), dirty_indices_.end());
-//        ROS_DEBUG("Features updated at %lu points (%.6f s).",
-//                  dirty_indices_.size(), t_part.seconds_elapsed());
-
-        t_part.reset();
         compute_labels(dirty_indices_.begin(), dirty_indices_.end());
-//        ROS_DEBUG("Labels updated at %lu points (%.6f s).",
-//                  dirty_indices_.size(), t_part.seconds_elapsed());
+        compute_edge_costs(dirty_indices_.begin(), dirty_indices_.end());
 
         ROS_DEBUG("%lu points updated (%.3f s).", dirty_indices_.size(), t.seconds_elapsed());
     }
@@ -1019,9 +1052,11 @@ public:
 //            Buffer<Index> empty_buf(n_nearby);
         Buffer<Value> nearby_dirs_buf(3 * n_nearby);
         FlannMat nearby_dirs(nearby_dirs_buf.begin(), n_nearby, 3);
+//        ConstFlannMat nearby_dirs(nearby_dirs_buf.begin(), n_nearby, 3);
         for (Index i = 0; i < n_nearby; ++i) {
             const Index v0 = q_nearby.nn_[0][i];
             Vec3Map dir(nearby_dirs[i]);
+//            ConstVec3Map dir(nearby_dirs[i]);
 //                dir = ConstVec3Map(points_[v0]) - x_origin;
             dir = ConstVec3Map(&cloud_[v0].position_[0]) - x_origin;
             const Elem norm = dir.norm();
@@ -1038,6 +1073,8 @@ public:
         int k_dirs = 5;  // Number of closest rays to check.
         uint16_t max_observations = 15;
         Query<Value> q_dirs(dirs_index, nearby_dirs, k_dirs);
+//        ConstFlannMat const_nearby_dirs(nearby_dirs_buf.begin(), nearby_dirs.rows, nearby_dirs.cols, nearby_dirs.stride);
+//        Query<Value> q_dirs(dirs_index, const_nearby_dirs, k_dirs);
         for (Index i = 0; i < n_nearby; ++i) {
             const Index v_map = q_nearby.nn_[0][i];
 //                ConstVec3Map x_map(points_[v_map]);
@@ -1311,6 +1348,12 @@ public:
         cloud.point_step = uint32_t(offsetof(Point, other_actors_last_visit_));
         append_field<decltype(Point().other_actors_last_visit_)>("other_actors_last_visit", 1, cloud);
 
+        cloud.point_step = uint32_t(offsetof(Point, coverage_));
+        append_field<decltype(Point().coverage_)>("coverage", 1, cloud);
+
+        cloud.point_step = uint32_t(offsetof(Point, self_coverage_));
+        append_field<decltype(Point().self_coverage_)>("self_coverage", 1, cloud);
+
         cloud.point_step = uint32_t(offsetof(Point, dist_to_obstacle_));
         append_field<decltype(Point().dist_to_obstacle_)>("dist_to_obstacle", 1, cloud);
 
@@ -1328,6 +1371,9 @@ public:
 
         cloud.point_step = uint32_t(offsetof(Point, num_obstacle_pts_));
         append_field<decltype(Point().num_obstacle_pts_)>("num_obstacle_pts", 1, cloud);
+
+        cloud.point_step = uint32_t(offsetof(Point, num_obstacle_neighbors_));
+        append_field<decltype(Point().num_obstacle_neighbors_)>("num_obstacle_neighbors", 1, cloud);
 
         cloud.point_step = uint32_t(offsetof(Point, num_edge_neighbors_));
         append_field<decltype(Point().num_edge_neighbors_)>("num_edge_neighbors", 1, cloud);
@@ -1347,8 +1393,8 @@ public:
     void create_cloud_msg(sensor_msgs::PointCloud2& cloud)
     {
         initialize_cloud(cloud);
-        Lock cloud_lock(cloud_mutex_);
         sensor_msgs::PointCloud2Modifier modifier(cloud);
+        Lock cloud_lock(cloud_mutex_);
         modifier.resize(cloud_.size());
 //        std::copy(&cloud_.front(), &cloud_.back(), &cloud.data.front());
 //        std::copy(cloud_.begin(), cloud_.end(), cloud.data.begin());
@@ -1373,6 +1419,7 @@ public:
 //            const auto from = reinterpret_cast<uint8_t*>(&cloud_[*it]);
 //            std::copy(from, from + cloud.point_step, out);
 //        }
+        Lock cloud_lock(cloud_mutex_);
         for (auto it = indices.begin(); it != indices.end(); ++it, out += cloud.point_step)
         {
             const auto from = reinterpret_cast<uint8_t*>(&cloud_[*it]);
@@ -1527,11 +1574,9 @@ public:
 class EdgeCosts
 {
 public:
-    EdgeCosts(const Map& map)
-        :
+    EdgeCosts(const Map& map):
         map_(map)
-    {
-    }
+    {}
     inline Cost operator[](const Edge& e) const
     {
         return map_.edge_cost(e);

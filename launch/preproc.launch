@@ -13,6 +13,7 @@
 
     <arg name="points" default="points"/>
     <arg name="points_slow" default="$(arg points)_slow"/>
+    <arg name="points_slow_freq" default="4.0"/>
     <arg name="points_slow_filtered" default="$(arg points_slow)_filtered"/>
     <arg name="points_min_dist" default="0.125"/>
 
@@ -23,13 +24,13 @@
 
     <!-- Husky adaptor -->
     <node name="os_points_throttle" pkg="topic_tools" type="throttle"
-          args="messages os_cloud_node/points 4.0 $(arg points_slow)"
+          args="messages os_cloud_node/points $(arg points_slow_freq) $(arg points_slow)"
           respawn="true" respawn_delay="1.0" output="log"/>
 
-    <arg name="use_robot_box_filter" value="$(eval robot_type in {'dtr', 'marv'})"/>
+    <arg name="use_robot_box_filter" value="$(eval robot_type in {'dtr', 'jeanine', 'marmotte', 'marv'})"/>
 
     <node name="points_throttle" pkg="topic_tools" type="throttle"
-          args="messages $(arg points) 4.0 $(arg points_slow)"
+          args="messages $(arg points) $(arg points_slow_freq) $(arg points_slow)"
           respawn="true" respawn_delay="1.0" output="log">
         <remap if="$(eval use_robot_box_filter)"
                from="$(arg points_slow)" to="$(arg points_slow)_pre"/>
@@ -39,12 +40,12 @@
           name="robot_box_filter" pkg="nodelet" type="nodelet"
           args="standalone cloud_proc/CropBoxImproved">
         <rosparam subst_value="true">
-            input_frame: $(arg robot)/base_footprint
             min_z: 0.0
             negative: true
             keep_organized: true
         </rosparam>
         <rosparam if="$(eval robot_type == 'dtr')" subst_value="true">
+            input_frame: $(arg robot)/base_footprint
             min_x: -0.475
             max_x: 0.475
             min_y: -0.3
@@ -52,7 +53,16 @@
             max_z: 0.8
             output_frame: $(arg robot)/encoder_rotating_link/gpu_lidar
         </rosparam>
+        <rosparam if="$(eval robot_type == 'jeanine')" subst_value="true">
+            min_x: -0.2
+            max_x: 0.2
+            min_y: -0.2
+            max_y: 0.2
+            min_z: -0.2
+            max_z: 0.2
+        </rosparam>
         <rosparam if="$(eval robot_type == 'marmotte')" subst_value="true">
+            input_frame: $(arg robot)/base_footprint
             min_x: -0.475
             max_x: 0.475
             min_y: -0.3
@@ -61,6 +71,7 @@
             output_frame: $(arg robot)/sensor_rack/front_lidar
         </rosparam>
         <rosparam if="$(eval robot_type == 'marv')" subst_value="true">
+            input_frame: $(arg robot)/base_footprint
             min_x: -0.5
             max_x: 0.5
             min_y: -0.4
@@ -82,6 +93,7 @@
     </node>
 
     <!-- SubT virtual EXPLORER_X1 RGBD sensors -->
+    <group if="$(eval robot_type == 'explorer_x1')">
     <node name="front_rgbd_points_throttle" pkg="topic_tools" type="throttle"
           args="messages front_rgbd/points 1.0 front_rgbd/points_slow"
           respawn="true" respawn_delay="1.0" output="log"/>
@@ -127,4 +139,21 @@
         <remap from="~input" to="rear_rgbd/points_slow"/>
         <remap from="~output" to="rear_rgbd/points_slow_filtered"/>
     </node>
+    </group>
+
+    <!-- SubT virtual Jeanine RGBD sensor -->
+    <group if="$(eval robot_type == 'jeanine')">
+        <node name="rgbd_front_points_throttle" pkg="topic_tools" type="throttle"
+              args="messages rgbd_front/points 1.0 rgbd_front/points_slow"
+              respawn="true" respawn_delay="1.0" output="log"/>
+
+            <node name="rgbd_front_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
+                <rosparam subst_value="true">
+                    leaf_size: $(arg points_min_dist)
+                    filter_field_name: ""
+                </rosparam>
+                <remap from="~input" to="rgbd_front/points_slow"/>
+                <remap from="~output" to="rgbd_front/points_slow_filtered"/>
+            </node>
+    </group>
 </launch>

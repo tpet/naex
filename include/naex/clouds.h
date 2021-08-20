@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <numeric>
 #include <naex/geom.h>
 #include <naex/point_field_traits.h>
 #include <naex/types.h>
@@ -620,137 +621,6 @@ void copy_points(const sensor_msgs::PointCloud2& input,
     }
     ROS_DEBUG("%lu / %lu points copied (%.6f s).",
               indices.size(), size_t(input.height * input.width), t.seconds_elapsed());
-}
-
-void step_subsample(const sensor_msgs::PointCloud2& input,
-                    const Index max_rows,
-                    const Index max_cols,
-                    sensor_msgs::PointCloud2& output)
-{
-    Timer t;
-    output.header = input.header;
-    Index row_step = (input.height - 1) / max_rows + 1;
-    Index col_step = (input.width - 1) / max_cols + 1;
-    output.height = input.height / row_step;
-    output.width = input.width / col_step;
-    output.fields = input.fields;
-    output.is_bigendian = input.is_bigendian;
-    output.point_step = input.point_step;
-    output.row_step = output.width * input.point_step;
-    output.is_dense = input.is_dense;
-
-    output.data.resize(output.height * output.width * output.point_step);
-    const uint8_t* in_ptr = input.data.data();
-    uint8_t* out_ptr = output.data.data();
-    for (Index r = 0; r < output.height; ++r)
-    {
-        for (Index c = 0; c < output.width; ++c)
-        {
-            std::copy(in_ptr + (r * row_step * input.row_step + (c * col_step) * input.point_step),
-                      in_ptr + (r * row_step * input.row_step + (c * col_step + 1) * input.point_step),
-                      out_ptr + (r * output.row_step + c * output.point_step));
-        }
-    }
-    ROS_DEBUG("Step-subsample %u-by-%u cloud to %u-by-%u (%.6f s).",
-              input.height, input.width, output.height, output.width, t.seconds_elapsed());
-}
-
-class Voxel
-{
-public:
-    class Hash
-    {
-    public:
-        size_t operator()(const Voxel& voxel) const noexcept
-        {
-            return voxel.hash();
-        }
-    };
-
-    Voxel():
-        x_(0), y_(0), z_(0)
-    {}
-    Voxel(int x, int y, int z):
-        x_(x), y_(y), z_(z)
-    {}
-    Voxel(const Voxel& other):
-        x_(other.x_), y_(other.y_), z_(other.z_)
-    {}
-    size_t hash() const noexcept
-    {
-        return (std::hash<int>{}(x_)
-                ^ std::hash<int>{}(y_)
-                ^ std::hash<int>{}(z_));
-    }
-    friend bool operator==(const Voxel& a, const Voxel& b)
-    {
-        return (a.x_ == b.x_) && (a.y_ == b.y_) && (a.z_ == b.z_);
-    }
-    int x_;
-    int y_;
-    int z_;
-};
-
-void voxel_filter(const sensor_msgs::PointCloud2& input,
-                  const Value bin_size,
-                  sensor_msgs::PointCloud2& output)
-{
-    Timer t, t_part;
-    assert(input.row_step % input.point_step == 0);
-    const Index n_pts = input.height * input.width;
-
-    t_part.reset();
-    std::vector<Index> indices;
-    indices.reserve(n_pts);
-    for (Index i = 0; i < n_pts; ++i)
-    {
-        indices.push_back(i);
-    }
-    std::random_device rd;
-    std::mt19937 g(rd());
-    std::shuffle(indices.begin(), indices.end(), g);
-    ROS_DEBUG("Created random permutation of %lu points (%.6f s).",
-              size_t(n_pts), t_part.seconds_elapsed());
-
-    t_part.reset();
-    std::vector<Index> keep;
-    keep.reserve(indices.size());
-    const uint8_t* in_ptr = input.data.data();
-//    uint8_t* out_ptr = output.data.data();
-    sensor_msgs::PointCloud2ConstIterator<float> pt_it(input, "x");
-    std::unordered_set<Voxel, Voxel::Hash> voxels;
-    voxels.reserve(keep.size());
-    for (Index i = 0; i < n_pts; ++i, in_ptr += input.point_step, ++pt_it)
-    {
-        if (!std::isfinite(pt_it[0]) || !std::isfinite(pt_it[1]) || !std::isfinite(pt_it[2]))
-        {
-            continue;
-        }
-        Value x = std::floor(pt_it[0] / bin_size);
-        Value y = std::floor(pt_it[1] / bin_size);
-        Value z = std::floor(pt_it[2] / bin_size);
-        if (x < std::numeric_limits<int>::min() || x > std::numeric_limits<int>::max()
-            || y < std::numeric_limits<int>::min() || y > std::numeric_limits<int>::max()
-            || z < std::numeric_limits<int>::min() || z > std::numeric_limits<int>::max())
-        {
-            continue;
-        }
-//        const Voxel voxel(int(x), int(y), int(z));
-        const Voxel voxel((int)x, (int)y, (int)z);
-        if (voxels.find(voxel) == voxels.end())
-        {
-//            voxels.insert(it, voxel);
-            voxels.insert(voxel);
-            keep.push_back(i);
-        }
-    }
-    ROS_DEBUG("Getting %lu indices to keep (%.6f s).", keep.size(), t_part.seconds_elapsed());
-
-    // Copy selected indices.
-    t_part.reset();
-    copy_points(input, keep, output);
-    ROS_DEBUG("%lu / %lu points kept by voxel filter (%.6f s).",
-              keep.size(), size_t(n_pts), t_part.seconds_elapsed());
 }
 
 }  // namespace naex

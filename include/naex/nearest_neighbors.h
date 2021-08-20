@@ -128,6 +128,7 @@ class Query
 public:
     Query(const flann::Index<flann::L2_3D<T>>& index,
           const flann::Matrix<T>& queries,
+//          const flann::Matrix<const T>& queries,
           const int k = 1,
           const T radius = std::numeric_limits<T>::infinity()) :
         nn_buf_(queries.rows * k),
@@ -161,63 +162,22 @@ class RadiusQuery
 public:
     RadiusQuery(const flann::Index<flann::L2_3D<T>>& index,
                 const flann::Matrix<T>& queries,
-                const T radius):
+                T radius,
+                int checks = 32):
         nn_(queries.rows),
         dist_(queries.rows)
     {
         flann::SearchParams params;
-        params.checks = 32;
+        params.checks = checks;
         params.cores = 0;
         params.sorted = true;
         params.use_heap = flann::FLANN_True;
         const auto radius_2 = radius * radius;
         index.radiusSearch(queries, nn_, dist_, radius_2, params);
     }
-    std::vector<std::vector<int>> nn_;
+    std::vector<std::vector<Index>> nn_;
     std::vector<std::vector<T>> dist_;
 };
-
-//    template<typename T>
-//    Query<T> query(const flann::Index<flann::L2_3D<T>>& index, const flann::Matrix<T>& queries, int k = 1)
-//    {
-//        return Query<T>(index, queries, k);
-//    }
-
-/*
-//    template<typename V, typename T>
-class KNearestNeighborGraph
-{
-public:
-    KNearestNeighborGraph(Index k)
-    //:
-//        nn_array_(k)
-    {
-    }
-    void add_points(const FlannMat& points);
-    Value* get_point();
-    // To mark neighboring points for update, NN should be symmetric.
-    // This may be done outside?
-    Value* remove_point(Index i);
-    void update_dirty();
-
-//    Query knn(const FlannMat& points)
-//    {
-//
-//    }
-
-//        std::map<Buffer<Type>> x_buf_;
-//        std::vector<flann::Matrix<Type>> x_;
-//    flann::Index index_;  // FLANN point index.
-//        Buffer<Index> nn_buf_;
-//        flann::Matrix<Index> nn_;  // N-by-K index array, K nearest neighbors for each of N points.
-//        Buffer<bool> nn_dirty_;
-    std::unordered_set<Index> dirty_nn_;
-    Buffer<Index> nn_count_;
-//        Array<1, Index> nn_count_;  // N-by-1, denotes number of valid nearest neighbors.
-    Array<2, Index> nn_array_;  // N-by-K, K nearest neighbors for each of N points.
-//        sensor_msgs::PointCloud2 meta_c
-};
-*/
 
 }  // namespace naex
 
