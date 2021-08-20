@@ -656,7 +656,7 @@ void copy_cloud_metadata(const sensor_msgs::PointCloud2& input,
  */
 template<typename C>
 void copy_points(const sensor_msgs::PointCloud2& input,
-                 const C indices,
+                 const C& indices,
                  sensor_msgs::PointCloud2& output)
 {
     Timer t;
