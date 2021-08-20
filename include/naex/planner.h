@@ -36,15 +36,7 @@
 namespace naex
 {
 typedef ValueIterator<Vertex> VertexIter;
-
 typedef ValueIterator<Edge> EdgeIter;
-
-bool bigendian()
-{
-    uint16_t num = 1;
-    return !(*(uint8_t*)&num == 1);
-}
-
 }  // namespace naex
 
 #include <naex/graph.h>

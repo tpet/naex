@@ -16,6 +16,13 @@
 
 namespace naex
 {
+bool bigendian()
+{
+    uint16_t num = 1;
+    return !(*(uint8_t*)&num == 1);
+}
+
+
     template<typename T>
     class PointFieldTraits
     {
