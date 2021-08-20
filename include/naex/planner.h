@@ -47,36 +47,9 @@ namespace naex
 class Planner
 {
 public:
-    Planner(ros::NodeHandle& nh, ros::NodeHandle& pnh)
-        :
+    Planner(ros::NodeHandle& nh, ros::NodeHandle& pnh):
         nh_(nh),
-        pnh_(pnh),
-        tf_(),
-        position_name_("x"),
-        normal_name_("normal_x"),
-        map_frame_("map"),
-        robot_frame_("base_footprint"),
-        robot_frames_(),
-        max_cloud_age_(5.),
-        input_range_(10.),
-        filter_robots_(false),
-        neighborhood_knn_(12),
-        neighborhood_radius_(.5),
-        normal_radius_(.5),
-        viewpoints_update_freq_(1.),
-        viewpoints_(),
-        other_viewpoints_(),
-        min_vp_distance_(1.5),
-        max_vp_distance_(5.),
-        self_factor_(.25),
-        path_cost_pow_(.75),
-        planning_freq_(.5),
-        random_start_(false),
-        bootstrap_z_(0.),
-        initialized_(false),
-        time_initialized_(std::numeric_limits<double>::quiet_NaN()),
-        queue_size_(5),
-        map_()
+        pnh_(pnh)
     {
         Timer t;
         // Invalid position invokes exploration mode.
@@ -1248,10 +1221,11 @@ protected:
     typedef std::recursive_mutex Mutex;
     typedef std::lock_guard<Mutex> Lock;
 
-    ros::NodeHandle& nh_;
-    ros::NodeHandle& pnh_;
-    std::unique_ptr<tf2_ros::Buffer> tf_;
-    std::unique_ptr<tf2_ros::TransformListener> tf_sub_;
+    ros::NodeHandle nh_;
+    ros::NodeHandle pnh_;
+//    std::unique_ptr<tf2_ros::Buffer> tf_;
+    std::shared_ptr<tf2_ros::Buffer> tf_{};
+    std::shared_ptr<tf2_ros::TransformListener> tf_sub_;
 
     ros::Publisher path_pub_;
     ros::Publisher viewpoints_pub_;
@@ -1271,41 +1245,50 @@ protected:
     ros::Timer viewpoints_update_timer_;
     ros::WallTimer update_params_timer_;
 
-    std::string position_name_;
-    std::string normal_name_;
+    std::string position_name_{"x"};
+    std::string normal_name_{"normal_x"};
 
-    std::string map_frame_;
-    std::string robot_frame_;
-    std::map<std::string, std::string> robot_frames_;
-    float max_cloud_age_;
-    float input_range_;
-    bool filter_robots_;
+    std::string map_frame_{"map"};
+    std::string robot_frame_{"base_footprint"};
+//    std::map<std::string, std::string> robot_frames_;
+    std::vector<std::string> robot_frames_{};
+    float max_cloud_age_{5.0};
+    float input_range_{10.0};
+    bool filter_robots_{false};
 
-    int neighborhood_knn_;
-    float neighborhood_radius_;
-    float normal_radius_;
+    int neighborhood_knn_{12};
+    float neighborhood_radius_{0.5};
+    float normal_radius_{neighborhood_radius_};
 
     Mutex viewpoints_mutex_;
-    float viewpoints_update_freq_;
-    std::vector<Value> viewpoints_;  // 3xN
-    std::vector<Value> other_viewpoints_;  // 3xN
-    float min_vp_distance_;
-    float max_vp_distance_;
-    float self_factor_;
-    float path_cost_pow_;
+    float viewpoints_update_freq_{1.0};
+//    std::vector<Value> viewpoints_{};  // 3xN
+//    std::vector<Value> other_viewpoints_{};  // 3xN
+//    std::vector<Vec<Value, 3>> viewpoints_{};
+//    std::vector<Vec<Value, 3>> other_viewpoints_{};
+    std::vector<Vec3> viewpoints_{};
+    std::vector<Vec3> other_viewpoints_{};
+    float min_vp_distance_{1.5};
+    float max_vp_distance_{6.0};
+    bool collect_rewards_{true};
+    float full_coverage_dist_{3.0};
+    float coverage_dist_spread_{1.5};
+    float self_factor_{0.25};
+    bool suppress_base_reward_{true};
+    float path_cost_pow_{0.75};
     // Re-planning frequency, repeating the last request if positive.
-    float planning_freq_;
+    float planning_freq_{0.5};
     // Randomize starting vertex within tolerance radius.
-    bool random_start_;
+    bool random_start_{false};
     // Z offset for bootstrap map height
-    float bootstrap_z_;
+    float bootstrap_z_{0.0};
     Mutex initialized_mutex_;
-    bool initialized_;
-    double time_initialized_;
+    bool initialized_{false};
+    double time_initialized_{std::numeric_limits<double>::quiet_NaN()};
 
-    int queue_size_;
+    int queue_size_{5};
     Mutex map_mutex_;
-    Map map_;
+    Map map_{};
 };
 
 }  // namespace naex

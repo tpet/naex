@@ -26,32 +26,7 @@ public:
 
     static const size_t DEFAULT_CAPACITY = 10000000;
 
-    Map():
-            index_(),
-            dirty_indices_(),
-            // Parameter defaults
-            points_min_dist_(0.2f),
-            min_empty_cos_(0.259),
-            // Occupancy
-            min_num_empty_(2),
-            min_empty_ratio_(1.0f),
-            max_occ_counter_(7),
-            neighborhood_radius_(0.6f),
-            edge_min_centroid_offset_(0.5f),
-            // Traversability
-        //        max_nn_height_diff_(.15),
-            min_ground_diff_(-0.1),
-            max_ground_diff_(0.3),
-            clearance_low_(0.15),
-            clearance_high_(0.8),
-            clearance_radius_(neighborhood_radius_),
-            min_points_obstacle_(3),
-            max_ground_diff_std_(0.1),
-            max_mean_abs_ground_diff_(0.1),
-            min_dist_to_obstacle_(clearance_radius_),
-            max_pitch_(30. / 180. * M_PI),
-            max_roll_(30. / 180. * M_PI),
-            inclination_penalty_(1.)
+    Map()
     {
 //        dirty_indices_.reser
         updated_indices_.reserve(10000);
@@ -1461,46 +1436,46 @@ public:
     // to avoid deadlocks.
 
     mutable Mutex cloud_mutex_;
-    std::vector<Point> cloud_;
-    std::vector<Neighborhood> graph_;
+    std::vector<Point> cloud_{};
+    std::vector<Neighborhood> graph_{};
 
     mutable Mutex index_mutex_;
     std::shared_ptr<flann::Index<flann::L2_3D<Value>>> index_;
 
     mutable Mutex updated_mutex_;
-    std::vector<Index> updated_indices_;
+    std::vector<Index> updated_indices_{};
 
     mutable Mutex dirty_mutex_;
 //    std::set<Index> dirty_indices_;
-    std::unordered_set<Index> dirty_indices_;
+    std::unordered_set<Index> dirty_indices_{};
 
     // Map parameters
-    float points_min_dist_;
+    float points_min_dist_{0.2};
     // Occupancy
-    float min_empty_cos_;
-    int min_num_empty_;
-    float min_empty_ratio_;
-    int max_occ_counter_;
+    float min_empty_cos_{0.259};
+    int min_num_empty_{2};
+    float min_empty_ratio_{1.0};
+    int max_occ_counter_{7};
 
     // Graph
 //    int neighbor
-    float neighborhood_radius_;
+    float neighborhood_radius_{0.6};
 //    float traversable_radius_;
     // Traversability
-    float edge_min_centroid_offset_;
+    float edge_min_centroid_offset_{0.5};
 //    float max_nn_height_diff_;
-    float min_ground_diff_;
-    float max_ground_diff_;
-    float clearance_low_;
-    float clearance_high_;
-    float clearance_radius_;
-    float min_points_obstacle_;
-    float max_ground_diff_std_;
-    float max_mean_abs_ground_diff_;
-    float min_dist_to_obstacle_;
-    float max_pitch_;
-    float max_roll_;
-    float inclination_penalty_;
+    float min_ground_diff_{-0.1};
+    float max_ground_diff_{0.3};
+    float clearance_low_{0.15};
+    float clearance_high_{0.8};
+    float clearance_radius_{neighborhood_radius_};
+    float min_points_obstacle_{3};
+    float max_ground_diff_std_{0.1};
+    float max_mean_abs_ground_diff_{0.1};
+    float min_dist_to_obstacle_{clearance_radius_};
+    float max_pitch_{30. / 180. * M_PI};
+    float max_roll_{30. / 180. * M_PI};
+    float inclination_penalty_{1.0};
 };
 
 /** https://www.boost.org/doc/libs/1_75_0/libs/graph/doc/adjacency_list.html */
