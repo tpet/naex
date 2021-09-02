@@ -9,7 +9,7 @@ Panels:
         - /TF1/Frames1
         - /Clearance1/Namespaces1
       Splitter Ratio: 0.568493127822876
-    Tree Height: 849
+    Tree Height: 729
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -122,13 +122,17 @@ Visualization Manager:
           Value: true
         X1/base_link/right_realsense_optical:
           Value: true
+        X1/base_link_zero_pitch:
+          Value: true
+        X1/base_link_zero_roll:
+          Value: true
+        X1/base_link_zero_roll_pitch:
+          Value: true
         X1/front_left_wheel_link:
           Value: true
         X1/front_right_wheel_link:
           Value: true
         X1/map:
-          Value: true
-        X1/map_fast:
           Value: true
         X1/odom:
           Value: true
@@ -136,11 +140,33 @@ Visualization Manager:
           Value: true
         X1/rear_right_wheel_link:
           Value: true
-        X1/subt_fast:
+        X1_ground_truth:
           Value: true
-        darpa:
+        backpack_1:
           Value: true
-        final_prelim_01:
+        backpack_2:
+          Value: true
+        backpack_3:
+          Value: true
+        backpack_4:
+          Value: true
+        phone_1:
+          Value: true
+        phone_2:
+          Value: true
+        phone_3:
+          Value: true
+        phone_4:
+          Value: true
+        rescue_randy_1:
+          Value: true
+        rescue_randy_2:
+          Value: true
+        rescue_randy_3:
+          Value: true
+        rescue_randy_4:
+          Value: true
+        simple_cave_01:
           Value: true
         subt:
           Value: true
@@ -152,43 +178,72 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        X1:
-          X1/base_link:
-            X1/base_footprint:
-              {}
-            X1/base_link/front_laser:
-              {}
-            X1/base_link/front_realsense:
-              X1/base_link/front_realsense_optical:
-                {}
-            X1/base_link/imu_sensor:
-              {}
-            X1/base_link/left_realsense:
-              X1/base_link/left_realsense_optical:
-                {}
-            X1/base_link/rear_realsense:
-              X1/base_link/rear_realsense_optical:
-                {}
-            X1/base_link/right_realsense:
-              X1/base_link/right_realsense_optical:
-                {}
-          X1/front_left_wheel_link:
+        world:
+          X1_ground_truth:
             {}
-          X1/front_right_wheel_link:
+          backpack_1:
             {}
-          X1/rear_left_wheel_link:
+          backpack_2:
             {}
-          X1/rear_right_wheel_link:
+          backpack_3:
             {}
-        X1/map:
-          {}
-        X1/odom:
-          X1/map_fast:
-            X1/subt_fast:
-              {}
-        subt:
-          darpa:
+          backpack_4:
             {}
+          phone_1:
+            {}
+          phone_2:
+            {}
+          phone_3:
+            {}
+          phone_4:
+            {}
+          rescue_randy_1:
+            {}
+          rescue_randy_2:
+            {}
+          rescue_randy_3:
+            {}
+          rescue_randy_4:
+            {}
+          simple_cave_01:
+            {}
+          subt:
+            X1/map:
+              X1/odom:
+                X1:
+                  X1/base_link:
+                    X1/base_footprint:
+                      {}
+                    X1/base_link/front_laser:
+                      {}
+                    X1/base_link/front_realsense:
+                      X1/base_link/front_realsense_optical:
+                        {}
+                    X1/base_link/imu_sensor:
+                      {}
+                    X1/base_link/left_realsense:
+                      X1/base_link/left_realsense_optical:
+                        {}
+                    X1/base_link/rear_realsense:
+                      X1/base_link/rear_realsense_optical:
+                        {}
+                    X1/base_link/right_realsense:
+                      X1/base_link/right_realsense_optical:
+                        {}
+                    X1/base_link_zero_pitch:
+                      {}
+                    X1/base_link_zero_roll:
+                      {}
+                    X1/base_link_zero_roll_pitch:
+                      {}
+                  X1/front_left_wheel_link:
+                    {}
+                  X1/front_right_wheel_link:
+                    {}
+                  X1/rear_left_wheel_link:
+                    {}
+                  X1/rear_right_wheel_link:
+                    {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -227,7 +282,7 @@ Visualization Manager:
           Show Trail: false
           Value: true
       Name: RobotModel
-      Robot Description: robot_description
+      Robot Description: /X1/robot_description
       TF Prefix: ""
       Update Interval: 0
       Value: true
@@ -602,6 +657,7 @@ Visualization Manager:
       Name: Clearance
       Namespaces:
         X1/base_footprint/clearance: true
+        X1/base_footprint/obstacles: true
       Queue Size: 2
       Value: true
   Enabled: true
@@ -646,7 +702,7 @@ Visualization Manager:
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
-      Near Clip Distance: 38
+      Near Clip Distance: 3
       Pitch: 1.5697963237762451
       Target Frame: X1
       Value: Orbit (rviz)
@@ -729,12 +785,12 @@ Window Geometry:
     collapsed: false
   Front:
     collapsed: false
-  Height: 1136
+  Height: 1016
   Hide Left Dock: false
   Hide Right Dock: false
   Left:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd0000000400000000000001b8000003fbfc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afc00000017000003fb000000e80100001dfa000000000100000002fb000000100044006900730070006c0061007900730100000000000001560000015600fffffffb0000000a005600690065007700730100000000ffffffff0000010000fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c000002610000000100000131000003fbfc0200000006fb0000000a00460072006f006e00740100000017000000fb0000001600fffffffb00000008004c0065006600740100000118000000f70000001600fffffffb0000000a005200690067006800740100000215000000fa0000001600fffffffb0000000800520065006100720100000315000000fd0000001600fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007480000003afc0100000002fb0000000800540069006d0065010000000000000748000002b900fffffffb0000000800540069006d0065010000000000000450000000000000000000000453000003fb00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730000000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000400000000000001b800000383fc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afc0000001700000383000000e80100001dfa000000000100000002fb000000100044006900730070006c0061007900730100000000000001560000015600fffffffb0000000a005600690065007700730100000000ffffffff0000010000fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000013100000383fc0200000006fb0000000a00460072006f006e00740100000017000000dd0000001600fffffffb00000008004c00650066007401000000fa000000d90000001600fffffffb0000000a0052006900670068007401000001d9000000dc0000001600fffffffb00000008005200650061007201000002bb000000df0000001600fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007380000003afc0100000002fb0000000800540069006d0065010000000000000738000002b900fffffffb0000000800540069006d00650100000000000004500000000000000000000004430000038300000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730000000000ffffffff0000000000000000
   Rear:
     collapsed: false
   Right:
@@ -747,6 +803,6 @@ Window Geometry:
     collapsed: false
   Views:
     collapsed: false
-  Width: 1864
-  X: 56
+  Width: 1848
+  X: 72
   Y: 27

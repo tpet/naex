@@ -28,6 +28,7 @@ import tf2_ros
 from threading import RLock
 from timeit import default_timer as timer
 from visualization_msgs.msg import Marker, MarkerArray
+from tf.transformations import euler_from_matrix
 
 np.set_printoptions(precision=2)
 
@@ -88,6 +89,8 @@ class PathFollower(object):
         self.max_speed = rospy.get_param('~max_speed', 1.0)  # m/s
         self.max_force_through_speed = rospy.get_param('~max_force_through_speed', .25)
         self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)  # rad/s
+        self.max_roll = rospy.get_param('naex_planner/max_roll', 0.7)  # rad
+        self.max_pitch = rospy.get_param('naex_planner/max_pitch', 0.7)  # rad
         self.keep_path = rospy.get_param('~keep_path', 30.0)
         self.increasing_waypoint_index = rospy.get_param('~increasing_waypoint_index', True)
         # Keep only points inside a box for clearance check.
@@ -257,8 +260,8 @@ class PathFollower(object):
         with self.cloud_lock:
             self.cloud_msg = msg
             self.cloud = cloud
-            rospy.loginfo('Cloud with %i points received, %i points kept (%.3f s).',
-                          msg.height * msg.width, cloud.shape[1], t)
+            rospy.logdebug('Cloud with %i points received, %i points kept (%.3f s).',
+                           msg.height * msg.width, cloud.shape[1], t)
 
     def check_pose_clearance(self, pose):
         if self.min_points_obstacle < 1:
@@ -399,17 +402,18 @@ class PathFollower(object):
                 # look_ahead, i = look_ahead.item(), i.item()
                 last = len(self.path_msg.poses) - 1
                 i = max(ind)
-                goal = self.path[i:i+1, :].T
+                assert self.path.shape[1] == 3
+                goal = self.path[i, :].reshape([3, 1])
                 look_ahead = np.linalg.norm(pose[:3, 3:] - goal)
                 while i < last and look_ahead < self.look_ahead:
                     i += 1
-                    new_goal = self.path[i:i+1, :].T
+                    new_goal = self.path[i, :].reshape([3, 1])
                     look_ahead += np.linalg.norm(new_goal - goal)
                     goal = new_goal
 
-                if self.increasing_waypoint_index and self.waypoint_index:
-                    i = max(i, self.waypoint_index)
-                self.waypoint_index = i
+                # if self.increasing_waypoint_index and self.waypoint_index:
+                #     i = max(i, self.waypoint_index)
+                # self.waypoint_index = i
 
                 show_ind = slice(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
                 self.publish_clearance(self.path_msg, show_ind)
@@ -480,8 +484,15 @@ class PathFollower(object):
             # p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
             # p_dist = 1.5 * max(np.cos(3. * angle), 0.)
             p_dist = 1.5 * np.exp(-(angle/0.25)**2)
+            speed = p_dist * dist
+            # add angular (similar to traversability) cost
+            roll, pitch, yaw = euler_from_matrix(pose)
+            rospy.logdebug('Roll: %.3f, max roll: %.3f', roll, self.max_roll)
+            rospy.logdebug('Pitch: %.3f, max pitch: %.3f', pitch, self.max_pitch)
+            trav_cost = np.abs(roll) / self.max_roll + np.abs(pitch) / self.max_pitch
+            speed /= (1 + trav_cost)
             max_speed = self.max_speed if self.stuck_since is None else self.max_force_through_speed
-            speed = vel_sign * np.clip(p_dist * dist, 0., max_speed)
+            speed = vel_sign * np.clip(speed, 0., max_speed)
 
             msg = Twist()
             msg.angular.z = angular_rate
