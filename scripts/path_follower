@@ -6,16 +6,14 @@ Always acts on the last received plan.
 An empty plan means no action (stopping the robot).
 """
 from __future__ import absolute_import, division, print_function
-# from exploration.msg import Path
 from geometry_msgs.msg import (
     Point,
     Pose,
     PoseStamped,
-    Pose2D,
-    Quaternion,
     Transform,
     TransformStamped,
-    Twist
+    Twist,
+    Vector3
 )
 from nav_msgs.msg import Path
 import numpy as np
@@ -89,8 +87,8 @@ class PathFollower(object):
         self.max_speed = rospy.get_param('~max_speed', 1.0)  # m/s
         self.max_force_through_speed = rospy.get_param('~max_force_through_speed', .25)
         self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)  # rad/s
-        self.max_roll = rospy.get_param('naex_planner/max_roll', 0.7)  # rad
-        self.max_pitch = rospy.get_param('naex_planner/max_pitch', 0.7)  # rad
+        self.max_roll = rospy.get_param('~max_roll', 0.7)  # rad
+        self.max_pitch = rospy.get_param('~max_pitch', 0.7)  # rad
         self.keep_path = rospy.get_param('~keep_path', 30.0)
         self.increasing_waypoint_index = rospy.get_param('~increasing_waypoint_index', True)
         # Keep only points inside a box for clearance check.
@@ -129,7 +127,7 @@ class PathFollower(object):
         self.tf_sub = tf2_ros.TransformListener(self.tf)
 
         self.path_pub = rospy.Publisher('control_path', Path, queue_size=2)
-        self.clearance_pub = rospy.Publisher('clearance', MarkerArray, queue_size=2)
+        self.markers_pub = rospy.Publisher('~markers', MarkerArray, queue_size=2)
         self.path_sub = rospy.Subscriber('path', Path, self.path_received, queue_size=2)
         self.cloud_sub = rospy.Subscriber('cloud', PointCloud2, self.cloud_received, queue_size=2)
         self.timer = rospy.Timer(rospy.Duration(1. / self.control_freq), self.control)
@@ -285,32 +283,53 @@ class PathFollower(object):
         pts = local_cloud[:3, obstacles] if n_obstacles else None
         return free, pts
 
-    def publish_clearance(self, path_msg=None, ind=slice(None)):
-        t = timer()
+    def path_markers(self, stamp, path_msg):
 
-        msg = MarkerArray()
-        now = rospy.Time.now()
-        if not path_msg:
-            with self.path_lock:
-                path_msg = self.path_msg
+        marker = Marker()
+        marker.header.frame_id = path_msg.header.frame_id
+        marker.header.stamp = stamp
+        marker.ns = '%s/path' % self.robot_frame
+        marker.id = 0
+        marker.action = Marker.MODIFY
+        marker.type = Marker.LINE_STRIP
+        marker.scale = Vector3(.1, .1, .1)
+        marker.color = ColorRGBA(0., 1., 0., .5)
+        marker.pose.orientation.w = 1.0
 
+        for i, pose in enumerate(path_msg.poses):
+            marker.points.append(pose.pose.position)
+            marker.colors.append(marker.color)
+
+        return [marker]
+
+    def clearance_markers(self, stamp, path_msg, indices):
+        markers = []
+
+        # Clean up previous clearance.
+        delete_all = Marker()
+        delete_all.ns = '%s/clearance' % self.robot_frame
+        delete_all.action = Marker.DELETEALL
+        markers.append(delete_all)
+
+        # Marker with obstacle points.
         pts_marker = Marker()
         pts_marker.header.frame_id = path_msg.header.frame_id
-        pts_marker.header.stamp = now
+        pts_marker.header.stamp = stamp
         pts_marker.ns = '%s/obstacles' % self.robot_frame
         pts_marker.id = 0
         pts_marker.action = Marker.MODIFY
         # pts_marker.type = Marker.POINTS
         pts_marker.type = Marker.SPHERE_LIST
-        pts_marker.scale.x = 0.05
-        pts_marker.scale.y = 0.05
-        pts_marker.scale.z = 0.05
+        pts_marker.scale = Vector3(.05, .05, .05)
+        pts_marker.color = ColorRGBA(1., 0., 0., .5)
         pts_marker.pose.orientation.w = 1.0
 
-        for i, pose in enumerate(path_msg.poses[ind]):
+        for i in indices:
+            pose = path_msg.poses[i]
+            # Pose clearance marker.
             marker = Marker()
             marker.header.frame_id = path_msg.header.frame_id
-            marker.header.stamp = now
+            marker.header.stamp = stamp
             marker.ns = '%s/clearance' % self.robot_frame
             marker.id = i
             marker.action = Marker.MODIFY
@@ -323,25 +342,75 @@ class PathFollower(object):
             marker.scale.x, marker.scale.y, marker.scale.z \
                 = self.clearance_box[:, 1] - self.clearance_box[:, 0]
             free, pts = self.check_pose_clearance(pose.pose)
-            marker.color = ColorRGBA(0., 1., 0., 0.25) \
-                if free else ColorRGBA(1., 0., 0., 0.25)
-            msg.markers.append(marker)
+            marker.color = ColorRGBA(0., 1., 0., 0.25) if free else ColorRGBA(1., 0., 0., 0.25)
+            markers.append(marker)
 
             if pts is not None:
                 for p in pts.T:
                     pts_marker.points.append(Point(*p))
+                    pts_marker.colors.append(ColorRGBA(1., 0., 0., .5))
 
-        msg.markers.append(pts_marker)
+        markers.append(pts_marker)
 
-        # Clean up previous clearance.
+        return markers
+
+    def waypoint_markers(self, stamp, path_msg, indices, color=ColorRGBA(0., 1., 0., .5)):
+
         marker = Marker()
-        marker.ns = '%s/clearance' % self.robot_frame
-        marker.action = Marker.DELETEALL
-        self.clearance_pub.publish(MarkerArray([marker]))
-        # Send current clearance.
-        self.clearance_pub.publish(msg)
+        marker.header.frame_id = path_msg.header.frame_id
+        marker.header.stamp = stamp
+        marker.ns = '%s/waypoints' % self.robot_frame
+        marker.id = 0
+        marker.action = Marker.MODIFY
+        # marker.type = Marker.POINTS
+        marker.type = Marker.SPHERE_LIST
+        marker.scale = Vector3(.25, .25, .25)
+        marker.color = color
+        marker.pose.orientation.w = 1.0
+
+        for i in indices:
+            pose = path_msg.poses[i]
+            marker.points.append(pose.pose.position)
+            marker.colors.append(marker.color)
+
+        return [marker]
+
+    def publish_markers(self, path_msg=None, clearance_indices=(), waypoint_indices=()):
+        if not path_msg:
+            with self.path_lock:
+                path_msg = self.path_msg
+
+        t = timer()
+        now = rospy.Time.now()
+        msg = MarkerArray()
+        msg.markers.extend(self.path_markers(now, path_msg))
+        msg.markers.extend(self.clearance_markers(now, path_msg, clearance_indices))
+        msg.markers.extend(self.waypoint_markers(now, path_msg, waypoint_indices))
+
+        # Send all markers.
+        self.markers_pub.publish(msg)
 
         rospy.logdebug('Publish clearance: %.3f s', timer() - t)
+
+    def path_cost(self, poses):
+        """Calculate path time cost, including distance, roll and pitch, and turning."""
+        cost = 0.
+
+        for i in range(1, len(poses)):
+            p0, p1 = poses[i - 1:i + 1]
+            pose_0 = numpify(p0)
+            pose_1 = numpify(p1)
+
+            dist = np.linalg.norm(pose_0[:3, 3] - pose_1[:3, 3])
+            cost += self.distance_cost(dist) * (1. + self.pose_cost(pose_1)[0])
+
+            _, _, yaw_0 = euler_from_matrix(pose_0)
+            _, _, yaw_1 = euler_from_matrix(pose_1)
+            yaw_diff = abs(yaw_1 - yaw_0)
+            yaw_diff += min(yaw_diff, 2. * np.pi - yaw_diff)
+            cost += self.turning_cost(yaw_diff)
+
+        return cost
 
     def maybe_invoke_backtracking(self):
         if self.idle_since is None:
@@ -359,6 +428,21 @@ class PathFollower(object):
                 return True
             else:
                 return False
+
+    def turning_cost(self, angle):
+        return angle / self.max_angular_rate
+
+    def distance_cost(self, dist):
+        return dist / self.max_speed
+
+    def pose_cost(self, pose):
+        assert isinstance(pose, np.ndarray)
+        assert pose.shape == (4, 4)
+
+        roll, pitch, yaw = euler_from_matrix(pose)
+        cost = np.abs(roll) / self.max_roll + np.abs(pitch) / self.max_pitch
+
+        return cost, roll, pitch
 
     def control(self, event):
         try:
@@ -411,12 +495,12 @@ class PathFollower(object):
                     look_ahead += np.linalg.norm(new_goal - goal)
                     goal = new_goal
 
-                # if self.increasing_waypoint_index and self.waypoint_index:
-                #     i = max(i, self.waypoint_index)
-                # self.waypoint_index = i
+                if self.increasing_waypoint_index and self.waypoint_index:
+                    i = max(i, self.waypoint_index)
+                self.waypoint_index = i
 
-                show_ind = slice(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
-                self.publish_clearance(self.path_msg, show_ind)
+                clearance_indices = range(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
+                self.publish_markers(self.path_msg, clearance_indices=clearance_indices, waypoint_indices=[i])
                 if not self.check_pose_clearance(self.path_msg.poses[i].pose)[0]:
                     if self.stuck_since is None:
                         self.stuck_since = rospy.Time.now()
@@ -460,15 +544,6 @@ class PathFollower(object):
                     if self.max_path_dists:
                         self.max_path_dist = self.max_path_dists.pop()
                     return
-
-                # Clear path and stop if the path is too far.
-                # Already part of goal search above.
-                # if dist > self.max_path_dist:
-                #     rospy.logwarn('Distance to path %.2f m too high (> %.2f m).',
-                #                   dist, self.max_path_dist)
-                #     self.clear_path()
-                #     self.cmd_pub.publish(Twist())
-                #     return
             
             if self.allow_backward and np.abs(angle) > np.pi / 2.:
                 angle = np.mod(angle + np.pi / 2., np.pi) - np.pi / 2.
@@ -482,15 +557,17 @@ class PathFollower(object):
 
             # Linear velocity
             # p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
+            p_dist = 1.5 * max(0., 1. - (abs(angle) / (np.pi / 6.))**2)
             # p_dist = 1.5 * max(np.cos(3. * angle), 0.)
-            p_dist = 1.5 * np.exp(-(angle/0.25)**2)
+            # p_dist = 1.5 * np.exp(-(angle/0.25)**2)
             speed = p_dist * dist
             # add angular (similar to traversability) cost
-            roll, pitch, yaw = euler_from_matrix(pose)
+            # roll, pitch, yaw = euler_from_matrix(pose)
+            pose_cost, roll, pitch = self.pose_cost(pose)
             rospy.logdebug('Roll: %.3f, max roll: %.3f', roll, self.max_roll)
             rospy.logdebug('Pitch: %.3f, max pitch: %.3f', pitch, self.max_pitch)
-            trav_cost = np.abs(roll) / self.max_roll + np.abs(pitch) / self.max_pitch
-            speed /= (1 + trav_cost)
+            # trav_cost = np.abs(roll) / self.max_roll + np.abs(pitch) / self.max_pitch
+            speed /= (1 + pose_cost)
             max_speed = self.max_speed if self.stuck_since is None else self.max_force_through_speed
             speed = vel_sign * np.clip(speed, 0., max_speed)
 
