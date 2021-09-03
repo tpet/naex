@@ -145,7 +145,7 @@ public:
 
         pnh_.param("filter_robots", filter_robots_, filter_robots_);
 
-        bool among_robots = std::find(robot_frames_.begin(), robot_frames_.end(), robot_frame_) == robot_frames_.end();
+        bool among_robots = std::find(robot_frames_.begin(), robot_frames_.end(), robot_frame_) != robot_frames_.end();
         if (!among_robots)
         {
             ROS_INFO("Adding robot frame %s to robot frames.", robot_frame_.c_str());
