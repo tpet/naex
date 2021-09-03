@@ -129,6 +129,7 @@ public:
         pnh_.param("self_factor", self_factor_, self_factor_);
         pnh_.param("suppress_base_reward", suppress_base_reward_, suppress_base_reward_);
         pnh_.param("path_cost_pow", path_cost_pow_, path_cost_pow_);
+        pnh_.param("min_path_cost", min_path_cost_, min_path_cost_);
         pnh_.param("planning_freq", planning_freq_, planning_freq_);
         pnh_.param("random_start", random_start_, random_start_);
         pnh_.param("bootstrap_z", bootstrap_z_, bootstrap_z_);
@@ -752,11 +753,8 @@ public:
             return true;
         }
 
-        Elem goal_cost = std::numeric_limits<Elem>::infinity();
+        // TODO: Account for time to enable patrolling (coverage half-life).
         Vertex v_goal = INVALID_VERTEX;
-        Vertex v = 0;
-
-        // TODO: Account for time to enable patrolling.
         for (Vertex v = 0; v < path_costs.size(); ++v)
         {
             if (!collect_rewards_)
@@ -771,16 +769,20 @@ public:
                 suppress_reward(map_.cloud_[v]);
             }
 
-            map_.cloud_[v].path_cost_ = std::isfinite(path_costs[v])
-                                        ? std::pow(path_costs[v], path_cost_pow_)
-                                        : std::numeric_limits<Value>::quiet_NaN();
-            map_.cloud_[v].relative_cost_ = map_.cloud_[v].path_cost_ / map_.cloud_[v].reward_;
-            // Avoid short paths and paths with no reward.
-            if (map_.cloud_[v].reward_ > 0.
-                && map_.cloud_[v].path_cost_ > 1.
-                && map_.cloud_[v].relative_cost_ < goal_cost)
+            // Keep original path cost, but discount for relative cost.
+//            map_.cloud_[v].path_cost_ = std::isfinite(path_costs[v])
+//                                        ? path_costs[v]
+//                                        : std::numeric_limits<Value>::quiet_NaN();
+            map_.cloud_[v].path_cost_ = path_costs[v];
+            map_.cloud_[v].relative_cost_ = std::pow(map_.cloud_[v].path_cost_, path_cost_pow_)
+                                            / map_.cloud_[v].reward_;
+            // Prefer longer feasible paths, with lowest relative costs.
+            if (std::isfinite(map_.cloud_[v].path_cost_)
+                && (v_goal == INVALID_VERTEX
+                    ||  (map_.cloud_[v_goal].path_cost_ < min_path_cost_
+                         && map_.cloud_[v].path_cost_ >= min_path_cost_)
+                    || map_.cloud_[v].relative_cost_ < map_.cloud_[v_goal].relative_cost_))
             {
-                goal_cost = map_.cloud_[v].relative_cost_;
                 v_goal = v;
             }
         }
@@ -1199,7 +1201,8 @@ protected:
     float coverage_dist_spread_{1.5};
     float self_factor_{0.25};
     bool suppress_base_reward_{true};
-    float path_cost_pow_{0.75};
+    float path_cost_pow_{1.0};
+    float min_path_cost_{0.0};
     // Re-planning frequency, repeating the last request if positive.
     float planning_freq_{0.5};
     // Randomize starting vertex within tolerance radius.
