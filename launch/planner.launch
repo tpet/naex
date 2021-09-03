@@ -50,8 +50,8 @@
             min_vp_distance: 2.0
             max_vp_distance: 6.0
             collect_rewards: true
-            full_coverage_dist: 6.38
-            coverage_dist_spread: 4.82
+            full_coverage_dist: 3.0
+            coverage_dist_spread: 1.5
             self_factor: 0.5
             path_cost_pow: 0.75
             min_path_cost: 1.0
