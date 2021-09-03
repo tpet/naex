@@ -7,9 +7,10 @@ Panels:
         - /Global Options1
         - /Status1
         - /TF1/Frames1
-        - /Clearance1/Namespaces1
+        - /Follower markers1
+        - /Follower markers1/Namespaces1
       Splitter Ratio: 0.568493127822876
-    Tree Height: 729
+    Tree Height: 849
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -23,8 +24,10 @@ Panels:
     Expanded:
       - /Current View1
       - /ThirdPersonFollower1/Focal Point1
+      - /FPS1
+      - /FPS fixed1
     Name: Views
-    Splitter Ratio: 0.534246563911438
+    Splitter Ratio: 0.5662100315093994
   - Class: rviz/Time
     Experimental: false
     Name: Time
@@ -99,151 +102,88 @@ Visualization Manager:
         X1:
           Value: true
         X1/base_footprint:
-          Value: true
+          Value: false
         X1/base_link:
           Value: false
         X1/base_link/front_laser:
-          Value: true
+          Value: false
         X1/base_link/front_realsense:
-          Value: true
+          Value: false
         X1/base_link/front_realsense_optical:
-          Value: true
+          Value: false
         X1/base_link/imu_sensor:
-          Value: true
+          Value: false
         X1/base_link/left_realsense:
-          Value: true
+          Value: false
         X1/base_link/left_realsense_optical:
-          Value: true
+          Value: false
         X1/base_link/rear_realsense:
-          Value: true
+          Value: false
         X1/base_link/rear_realsense_optical:
-          Value: true
+          Value: false
         X1/base_link/right_realsense:
-          Value: true
+          Value: false
         X1/base_link/right_realsense_optical:
-          Value: true
-        X1/base_link_zero_pitch:
-          Value: true
-        X1/base_link_zero_roll:
-          Value: true
-        X1/base_link_zero_roll_pitch:
-          Value: true
+          Value: false
         X1/front_left_wheel_link:
-          Value: true
+          Value: false
         X1/front_right_wheel_link:
-          Value: true
+          Value: false
         X1/map:
           Value: true
+        X1/map_fast:
+          Value: false
         X1/odom:
           Value: true
         X1/rear_left_wheel_link:
-          Value: true
+          Value: false
         X1/rear_right_wheel_link:
-          Value: true
-        X1_ground_truth:
-          Value: true
-        backpack_1:
-          Value: true
-        backpack_2:
-          Value: true
-        backpack_3:
-          Value: true
-        backpack_4:
-          Value: true
-        phone_1:
-          Value: true
-        phone_2:
-          Value: true
-        phone_3:
-          Value: true
-        phone_4:
-          Value: true
-        rescue_randy_1:
-          Value: true
-        rescue_randy_2:
-          Value: true
-        rescue_randy_3:
-          Value: true
-        rescue_randy_4:
-          Value: true
-        simple_cave_01:
+          Value: false
+        finals_qual:
           Value: true
         subt:
           Value: true
         world:
-          Value: true
+          Value: false
       Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
       Tree:
-        world:
-          X1_ground_truth:
-            {}
-          backpack_1:
-            {}
-          backpack_2:
-            {}
-          backpack_3:
-            {}
-          backpack_4:
-            {}
-          phone_1:
-            {}
-          phone_2:
-            {}
-          phone_3:
-            {}
-          phone_4:
-            {}
-          rescue_randy_1:
-            {}
-          rescue_randy_2:
-            {}
-          rescue_randy_3:
-            {}
-          rescue_randy_4:
-            {}
-          simple_cave_01:
-            {}
-          subt:
-            X1/map:
-              X1/odom:
-                X1:
-                  X1/base_link:
-                    X1/base_footprint:
-                      {}
-                    X1/base_link/front_laser:
-                      {}
-                    X1/base_link/front_realsense:
-                      X1/base_link/front_realsense_optical:
-                        {}
-                    X1/base_link/imu_sensor:
-                      {}
-                    X1/base_link/left_realsense:
-                      X1/base_link/left_realsense_optical:
-                        {}
-                    X1/base_link/rear_realsense:
-                      X1/base_link/rear_realsense_optical:
-                        {}
-                    X1/base_link/right_realsense:
-                      X1/base_link/right_realsense_optical:
-                        {}
-                    X1/base_link_zero_pitch:
-                      {}
-                    X1/base_link_zero_roll:
-                      {}
-                    X1/base_link_zero_roll_pitch:
-                      {}
-                  X1/front_left_wheel_link:
+        subt:
+          X1/map:
+            X1/odom:
+              X1:
+                X1/base_link:
+                  X1/base_footprint:
                     {}
-                  X1/front_right_wheel_link:
+                  X1/base_link/front_laser:
                     {}
-                  X1/rear_left_wheel_link:
+                  X1/base_link/front_realsense:
+                    X1/base_link/front_realsense_optical:
+                      {}
+                  X1/base_link/imu_sensor:
                     {}
-                  X1/rear_right_wheel_link:
-                    {}
+                  X1/base_link/left_realsense:
+                    X1/base_link/left_realsense_optical:
+                      {}
+                  X1/base_link/rear_realsense:
+                    X1/base_link/rear_realsense_optical:
+                      {}
+                  X1/base_link/right_realsense:
+                    X1/base_link/right_realsense_optical:
+                      {}
+                X1/front_left_wheel_link:
+                  {}
+                X1/front_right_wheel_link:
+                  {}
+                X1/rear_left_wheel_link:
+                  {}
+                X1/rear_right_wheel_link:
+                  {}
+              X1/map_fast:
+                {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -342,7 +282,7 @@ Visualization Manager:
         Min Value: -10
         Value: true
       Axis: Z
-      Channel Name: z
+      Channel Name: intensity
       Class: rviz/PointCloud2
       Color: 255; 255; 255
       Color Transformer: FlatColor
@@ -473,7 +413,7 @@ Visualization Manager:
       Max Intensity: 54
       Min Color: 0; 0; 0
       Min Intensity: 2
-      Name: Local map
+      Name: Local traversability
       Position Transformer: XYZ
       Queue Size: 2
       Selectable: false
@@ -503,7 +443,7 @@ Visualization Manager:
       Max Intensity: 1
       Min Color: 239; 41; 41
       Min Intensity: 0
-      Name: Local map (coverage)
+      Name: Local coverage
       Position Transformer: XYZ
       Queue Size: 2
       Selectable: false
@@ -533,7 +473,7 @@ Visualization Manager:
       Max Intensity: 5000
       Min Color: 114; 159; 207
       Min Intensity: 0
-      Name: Local map (reward)
+      Name: Local reward
       Position Transformer: XYZ
       Queue Size: 2
       Selectable: false
@@ -545,6 +485,66 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: path_cost
+      Class: rviz/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 252; 233; 79
+      Max Intensity: 20
+      Min Color: 114; 159; 207
+      Min Intensity: 0
+      Name: Local path cost
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.02500000037252903
+      Style: Flat Squares
+      Topic: /X1/local_map
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: false
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: relative_cost
+      Class: rviz/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 252; 233; 79
+      Max Intensity: 0.009999999776482582
+      Min Color: 114; 159; 207
+      Min Intensity: 0
+      Name: Local rel. cost
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: false
+      Size (Pixels): 3
+      Size (m): 0.02500000037252903
+      Style: Flat Squares
+      Topic: /X1/local_map
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
@@ -632,7 +632,7 @@ Visualization Manager:
       Buffer Length: 1
       Class: rviz/Path
       Color: 25; 255; 0
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
       Length: 0.30000001192092896
@@ -650,14 +650,15 @@ Visualization Manager:
       Shaft Length: 0.10000000149011612
       Topic: /X1/control_path
       Unreliable: false
-      Value: true
+      Value: false
     - Class: rviz/MarkerArray
       Enabled: true
-      Marker Topic: /X1/clearance
-      Name: Clearance
+      Marker Topic: /X1/path_follower/markers
+      Name: Follower markers
       Namespaces:
         X1/base_footprint/clearance: true
-        X1/base_footprint/obstacles: true
+        X1/base_footprint/path: true
+        X1/base_footprint/waypoints: true
       Queue Size: 2
       Value: true
   Enabled: true
@@ -688,7 +689,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 40
+      Distance: 43.63492965698242
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -702,11 +703,11 @@ Visualization Manager:
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
-      Near Clip Distance: 3
+      Near Clip Distance: 8
       Pitch: 1.5697963237762451
       Target Frame: X1
       Value: Orbit (rviz)
-      Yaw: 0
+      Yaw: 0.004999999888241291
     Saved:
       - Class: rviz/ThirdPersonFollower
         Distance: 40
@@ -759,8 +760,48 @@ Visualization Manager:
         Focal Shape Fixed Size: false
         Focal Shape Size: 0.05000000074505806
         Invert Z Axis: false
-        Name: Orbit
+        Name: Orbit 40m
         Near Clip Distance: 38
+        Pitch: 1.5697963237762451
+        Target Frame: X1
+        Value: Orbit (rviz)
+        Yaw: 0
+      - Class: rviz/Orbit
+        Distance: 20
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Focal Shape Fixed Size: false
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: Orbit 20m
+        Near Clip Distance: 18
+        Pitch: 1.5697963237762451
+        Target Frame: X1
+        Value: Orbit (rviz)
+        Yaw: 0
+      - Class: rviz/Orbit
+        Distance: 10
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Focal Shape Fixed Size: false
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: Orbit 10m
+        Near Clip Distance: 8
         Pitch: 1.5697963237762451
         Target Frame: X1
         Value: Orbit (rviz)
@@ -780,17 +821,34 @@ Visualization Manager:
         Value: TopDownOrtho (rviz)
         X: 0
         Y: 0
+      - Class: rviz/FPS
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Invert Z Axis: false
+        Name: FPS fixed
+        Near Clip Distance: 0.009999999776482582
+        Pitch: 0.9620568752288818
+        Position:
+          X: 13.442293167114258
+          Y: 4.884179592132568
+          Z: 10.136640548706055
+        Target Frame: <Fixed Frame>
+        Value: FPS (rviz)
+        Yaw: 5.37239933013916
 Window Geometry:
   Displays:
     collapsed: false
   Front:
     collapsed: false
-  Height: 1016
+  Height: 1136
   Hide Left Dock: false
   Hide Right Dock: false
   Left:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd0000000400000000000001b800000383fc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afc0000001700000383000000e80100001dfa000000000100000002fb000000100044006900730070006c0061007900730100000000000001560000015600fffffffb0000000a005600690065007700730100000000ffffffff0000010000fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000013100000383fc0200000006fb0000000a00460072006f006e00740100000017000000dd0000001600fffffffb00000008004c00650066007401000000fa000000d90000001600fffffffb0000000a0052006900670068007401000001d9000000dc0000001600fffffffb00000008005200650061007201000002bb000000df0000001600fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007380000003afc0100000002fb0000000800540069006d0065010000000000000738000002b900fffffffb0000000800540069006d00650100000000000004500000000000000000000004430000038300000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730000000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000400000000000001b8000003fbfc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afc00000017000003fb000000e80100001dfa000000000100000002fb000000100044006900730070006c0061007900730100000000000001560000015600fffffffb0000000a005600690065007700730100000000ffffffff0000010000fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c000002610000000100000131000003fbfc0200000006fb0000000a00460072006f006e00740100000017000000fb0000001600fffffffb00000008004c0065006600740100000118000000f70000001600fffffffb0000000a005200690067006800740100000215000000fa0000001600fffffffb0000000800520065006100720100000315000000fd0000001600fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007480000003afc0100000002fb0000000800540069006d0065010000000000000748000002b900fffffffb0000000800540069006d0065010000000000000450000000000000000000000453000003fb00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730000000000ffffffff0000000000000000
   Rear:
     collapsed: false
   Right:
@@ -803,6 +861,6 @@ Window Geometry:
     collapsed: false
   Views:
     collapsed: false
-  Width: 1848
-  X: 72
+  Width: 1864
+  X: 56
   Y: 27
