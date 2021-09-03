@@ -38,6 +38,7 @@
 #include <ros/ros.h>
 #include <sensor_msgs/point_cloud2_iterator.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <tf2_eigen/tf2_eigen.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <unordered_map>
@@ -132,6 +133,7 @@ public:
         pnh_.param("min_path_cost", min_path_cost_, min_path_cost_);
         pnh_.param("planning_freq", planning_freq_, planning_freq_);
         pnh_.param("random_start", random_start_, random_start_);
+        pnh_.param("plan_from_goal_dist", plan_from_goal_dist_, plan_from_goal_dist_);
         pnh_.param("bootstrap_z", bootstrap_z_, bootstrap_z_);
 
         int num_input_clouds = 1;
@@ -597,7 +599,7 @@ public:
                 return false;
             }
         }
-        ROS_INFO("Planning from [%.1f, %.1f, %.1f] to [%.1f, %.1f, %.1f] with tolerance %.1f.",
+        ROS_INFO("Planning request from [%.1f, %.1f, %.1f] to [%.1f, %.1f, %.1f] with tolerance %.1f m.",
                  req.start.pose.position.x, req.start.pose.position.y, req.start.pose.position.z,
                  req.goal.pose.position.x, req.goal.pose.position.y, req.goal.pose.position.z,
                  req.tolerance);
@@ -616,6 +618,23 @@ public:
                 const auto tf = tf_->lookupTransform(map_frame_, robot_frame_,
                                                      ros::Time::now(), ros::Duration(5.));
                 transform_to_pose(tf, start);
+                // If the robot is near the previous goal, try to plan from this goal.
+                auto last_goal_valid = valid_point(last_goal_.pose.position.x,
+                                                   last_goal_.pose.position.y,
+                                                   last_goal_.pose.position.z);
+                if (last_goal_valid)
+                {
+                    Eigen::Vector3d pos, last_goal;
+                    tf2::fromMsg(tf.transform.translation, pos);
+                    tf2::fromMsg(last_goal_.pose.position, last_goal);
+                    double dist = (pos - last_goal).norm();
+                    if (dist < plan_from_goal_dist_)
+                    {
+                        start = last_goal_;
+                        ROS_INFO("Planning from previous goal [%.1f, %.1f, %.1f].",
+                                 start.pose.position.x, start.pose.position.y, start.pose.position.z);
+                    }
+                }
             }
             catch (const tf2::TransformException& ex)
             {
@@ -785,9 +804,10 @@ public:
                                             / map_.cloud_[v].reward_;
             // Prefer longer feasible paths, with lowest relative costs.
             if (std::isfinite(map_.cloud_[v].path_cost_)
+                && map_.cloud_[v].path_cost_ >= min_path_cost_
                 && (v_goal == INVALID_VERTEX
-                    ||  (map_.cloud_[v_goal].path_cost_ < min_path_cost_
-                         && map_.cloud_[v].path_cost_ >= min_path_cost_)
+//                    ||  (map_.cloud_[v_goal].path_cost_ < min_path_cost_
+//                         && map_.cloud_[v].path_cost_ >= min_path_cost_)
                     || map_.cloud_[v].relative_cost_ < map_.cloud_[v_goal].relative_cost_))
             {
                 v_goal = v;
@@ -808,7 +828,7 @@ public:
 
         if (v_goal == INVALID_VERTEX)
         {
-            ROS_ERROR("No valid path/goal found.");
+            ROS_ERROR("No valid path (with cost >= %.1f s)/goal found.", min_path_cost_);
             return false;
         }
 
@@ -822,6 +842,11 @@ public:
         res.plan.poses.push_back(start);
 //            append_path(path_indices, points, normals, res.plan);
         append_path(path_indices, map_.cloud_, res.plan);
+        if (!res.plan.poses.empty())
+        {
+            last_start_ = res.plan.poses.front();
+            last_goal_ = res.plan.poses.back();
+        }
         ROS_INFO("Path with %lu poses to goal [%.1f, %.1f, %.1f] "
                  "has cost %.3f, reward %.3f, relative cost %.3f (%.3f s).",
                  res.plan.poses.size(),
@@ -1214,6 +1239,9 @@ protected:
     float planning_freq_{0.5};
     // Randomize starting vertex within tolerance radius.
     bool random_start_{false};
+    double plan_from_goal_dist_{0.0};
+    geometry_msgs::PoseStamped last_start_{};
+    geometry_msgs::PoseStamped last_goal_{};
     // Z offset for bootstrap map height
     float bootstrap_z_{0.0};
     Mutex initialized_mutex_;

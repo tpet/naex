@@ -13,7 +13,8 @@
     </include>
 
     <node name="naex_planner" pkg="naex" type="planner"
-          respawn="true" respawn_delay="1.0" output="screen">
+          respawn="true" respawn_delay="1.0" output="screen"
+          launch-prefix="catchsegv">
 
         <!--
              5 0.087
@@ -53,10 +54,12 @@
             full_coverage_dist: 3.0
             coverage_dist_spread: 1.5
             self_factor: 0.5
+            suppress_base_reward: true
             path_cost_pow: 0.75
             min_path_cost: 1.0
             planning_freq: 0.5
             random_start: false
+            plan_from_goal_dist: 1.5
             bootstrap_z: .nan
 
             min_num_empty: 4

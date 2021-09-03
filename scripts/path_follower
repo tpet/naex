@@ -108,6 +108,9 @@ class PathFollower(object):
 
         self.path_lock = RLock()
         self.path_msg = None  # Path message
+        self.path_received_time = None
+        self.path_costs = None
+        self.next_path_msg = None  # Subsequent path to be used after reaching goal.
         self.path = None  # n-by-3 path position array
         self.path_x_index = None  # Index of above
         # Waypoint index (into the path)
@@ -169,6 +172,8 @@ class PathFollower(object):
     def clear_path(self):
         with self.path_lock:
             self.path_msg = None
+            self.path_received_time = None
+            self.path_costs = None
             self.path = None
             self.path_x_index = None
             self.waypoint_index = None
@@ -204,6 +209,12 @@ class PathFollower(object):
                 age = (rospy.Time.now() - self.path_msg.header.stamp).to_sec()
                 if age <= self.keep_path and self.stuck_since is None:
                     rospy.loginfo('Keeping previous path (%.1f s <= %.1f s).', age, self.keep_path)
+                    # Store as a subsequent path for later use.
+                    goal = numpify(self.path_msg.poses[-1].pose.position)
+                    start = numpify(msg.poses[0].pose.position)
+                    if np.linalg.norm(goal - start) < 0.1:
+                        rospy.loginfo('Subsequent path stored for later use.')
+                        self.next_path_msg = msg
                     return
 
         # Update path and index.
@@ -212,6 +223,9 @@ class PathFollower(object):
         with self.path_lock:
             self.clear_path()
             self.path_msg = msg
+            self.path_received_time = rospy.Time.now()
+            self.path_costs = self.compute_path_costs(self.path_msg.poses)
+            self.next_path_msg = None
             self.path = path
             self.path_x_index = path_x_index
             self.path_pub.publish(msg)
@@ -392,25 +406,34 @@ class PathFollower(object):
 
         rospy.logdebug('Publish clearance: %.3f s', timer() - t)
 
-    def path_cost(self, poses):
-        """Calculate path time cost, including distance, roll and pitch, and turning."""
-        cost = 0.
+    def compute_path_costs(self, poses):
+        """Calculate cumulative path cost for all waypoints.
+        This include distance, traversability, and turning cost.
+        """
+        t = timer()
+        costs = [0.]
 
         for i in range(1, len(poses)):
             p0, p1 = poses[i - 1:i + 1]
-            pose_0 = numpify(p0)
-            pose_1 = numpify(p1)
+            assert isinstance(p0, PoseStamped)
+            assert isinstance(p1, PoseStamped)
+            pose_0 = numpify(p0.pose)
+            pose_1 = numpify(p1.pose)
 
             dist = np.linalg.norm(pose_0[:3, 3] - pose_1[:3, 3])
-            cost += self.distance_cost(dist) * (1. + self.pose_cost(pose_1)[0])
-
+            c01 = 0.
+            c01 += 1.06 * self.distance_cost(dist)
+            c01 += 1.08 * self.distance_cost(dist) * self.pose_cost(pose_1)[0]
             _, _, yaw_0 = euler_from_matrix(pose_0)
             _, _, yaw_1 = euler_from_matrix(pose_1)
             yaw_diff = abs(yaw_1 - yaw_0)
             yaw_diff += min(yaw_diff, 2. * np.pi - yaw_diff)
-            cost += self.turning_cost(yaw_diff)
+            c01 += 0.24 * self.turning_cost(yaw_diff)
+            costs.append(costs[-1] + c01)
 
-        return cost
+        rospy.loginfo('Path time cost: %.1f s (%.2f s).', costs[-1], timer() - t)
+        return costs
+
 
     def maybe_invoke_backtracking(self):
         if self.idle_since is None:
@@ -537,10 +560,17 @@ class PathFollower(object):
                 if (i == last
                         and dist <= self.goal_reached_dist
                         and abs(angle) <= self.goal_reached_angle):
-                    rospy.loginfo('Goal reached: %.2f m from robot (<= %.2f m).',
-                                  dist, self.goal_reached_dist)
+                    est_time = self.path_costs[-1]
+                    act_time = (rospy.Time.now() - self.path_received_time).to_sec()
+                    rospy.loginfo('Goal reached: %.2f m from robot (<= %.2f m). Est. time %.1f s, actual %.1f s.',
+                                  dist, self.goal_reached_dist, est_time, act_time)
                     self.clear_path()
-                    self.cmd_pub.publish(Twist())
+                    if self.next_path_msg:
+                        rospy.loginfo("Using stored subsequent path (%i poses).",
+                                      len(self.next_path_msg.poses))
+                        self.path_received(self.next_path_msg)
+                    else:
+                        self.cmd_pub.publish(Twist())
                     if self.max_path_dists:
                         self.max_path_dist = self.max_path_dists.pop()
                     return
@@ -567,7 +597,7 @@ class PathFollower(object):
             rospy.logdebug('Roll: %.3f, max roll: %.3f', roll, self.max_roll)
             rospy.logdebug('Pitch: %.3f, max pitch: %.3f', pitch, self.max_pitch)
             # trav_cost = np.abs(roll) / self.max_roll + np.abs(pitch) / self.max_pitch
-            speed /= (1 + pose_cost)
+            speed /= (1. + pose_cost)
             max_speed = self.max_speed if self.stuck_since is None else self.max_force_through_speed
             speed = vel_sign * np.clip(speed, 0., max_speed)
 
