@@ -294,10 +294,16 @@ public:
                 // Get current time for this actor, past time for other
                 // actors to account for transmission time of shared
                 // localization.
-                const auto time = (frame == robot_frame_)
-                                  ? ros::Time(std::max(event.current_expected.toSec() - 1., 0.))
-                                  : ros::Time(std::max(event.current_expected.toSec() - 2., 0.));
-                const auto tf = tf_->lookupTransform(map_frame_, frame, time, ros::Duration(0.));
+
+//                const auto time = (frame == robot_frame_)
+//                                  ? ros::Time(std::max(event.current_expected.toSec() - 1., 0.))
+//                                  : ros::Time(std::max(event.current_expected.toSec() - 2., 0.));
+//                const auto tf = tf_->lookupTransform(map_frame_, frame, time, ros::Duration(0.));
+
+                // Try to get most recent viewpoints.
+                const auto time = event.current_expected;
+                const auto timeout = std::max(3.0 - (ros::Time::now() - event.current_expected).toSec(), 0.0);
+                const auto tf = tf_->lookupTransform(map_frame_, frame, time, ros::Duration(timeout));
 
                 Vec3 pos(Value(tf.transform.translation.x),
                          Value(tf.transform.translation.y),
@@ -315,6 +321,7 @@ public:
 
                 if (map_.empty())
                 {
+                    ROS_WARN("Empty map, no points updated from gathered viewpoints.");
                     continue;
                 }
                 Lock cloud_lock(map_.cloud_mutex_);
@@ -366,7 +373,7 @@ public:
             }
             catch (const tf2::TransformException& ex)
             {
-                ROS_WARN_THROTTLE(5., "Could not get robot %s position: %s.",
+                ROS_WARN_THROTTLE(5.0, "Viewpoint of %s not updated: %s.",
                                   frame.c_str(), ex.what());
                 continue;
             }
