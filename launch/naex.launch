@@ -5,37 +5,42 @@
     <arg name="robots" default="$(arg robot)"/>
     <arg name="points_min_dist" default="0.125"/>
     <arg name="cmd_vel" default="cmd_vel"/>
-    <arg name="path" default="path"/>
+    <arg name="path_planned" default="path"/>
+    <arg name="path_to_follow" default="path"/>
+    <arg name="keep_path" default="3."/>
 
     <arg if="$(eval robot_type == 'jeanine')" name="points" default="front_laser/points"/>
 
     <group ns="$(arg robot)">
-    <node if="0" name="map_to_subt_identity" pkg="tf" type="static_transform_publisher"
-          args="0 0 0 0 0 0 subt $(arg robot)/map 0.1"/>
-    <include file="$(dirname)/tf.launch" pass_all_args="true"/>
-    <include file="$(dirname)/preproc.launch" pass_all_args="true"/>
+        <node if="0" name="map_to_subt_identity" pkg="tf" type="static_transform_publisher"
+              args="0 0 0 0 0 0 subt $(arg robot)/map 0.1"/>
+        <include file="$(dirname)/tf.launch" pass_all_args="true"/>
+        <include file="$(dirname)/preproc.launch" pass_all_args="true"/>
 
-    <include file="$(dirname)/odom.launch" pass_all_args="true"/>
-    <include file="$(dirname)/slam.launch" pass_all_args="true">
-        <arg if="$(eval robot_type == 'dtr')"
-             name="points_slow_filtered" value="points_filtered_batch"/>
-    </include>
+        <include file="$(dirname)/odom.launch" pass_all_args="true"/>
+        <include file="$(dirname)/slam.launch" pass_all_args="true">
+            <arg if="$(eval robot_type == 'dtr')"
+                 name="points_slow_filtered" value="points_filtered_batch"/>
+        </include>
 
-    <include file="$(dirname)/planner.launch" pass_all_args="true"/>
-    <include file="$(dirname)/follower.launch" pass_all_args="true"/>
+        <include file="$(dirname)/planner.launch" pass_all_args="true">
+            <arg name="path_planned" value="$(arg path_planned)"/>
+        </include>
+        <include file="$(dirname)/follower.launch" pass_all_args="true">
+            <arg name="path_to_follow" value="$(arg path_to_follow)"/>
+            <arg name="keep_path" value="$(arg keep_path)"/>
+        </include>
 
-    <include file="$(dirname)/record.launch" pass_all_args="true">
-        <arg name="mode" value="none"/>
-    </include>
+        <include file="$(dirname)/record.launch" pass_all_args="true">
+            <arg name="mode" value="none"/>
+        </include>
 
-    <!-- RPZ prediction and planning -->
-    <!-- <include if="1" file="$(find rpz_planning)/launch/rpz_predictor_leveller.launch" pass_all_args="true"/> -->
-    <include if="0" file="$(find rpz_planning)/launch/rpz_predictor.launch" pass_all_args="true"/>
-    <include if="0" file="$(find rpz_planning)/launch/rpz_planner.launch" pass_all_args="true"/>
-    <include if="0" file="$(find rpz_planning)/launch/record.launch" pass_all_args="true"/>
+        <!-- RPZ prediction and planning -->
+        <include if="0" file="$(find rpz_planning)/launch/rpz_predictor.launch" pass_all_args="true"/>
+        <include if="0" file="$(find rpz_planning)/launch/rpz_planner.launch" pass_all_args="true"/>
+        <include if="0" file="$(find rpz_planning)/launch/record.launch" pass_all_args="true"/>
 
-<!--    <node if="1" name="rviz" pkg="rviz" type="rviz" args="-d $(dirname)/subt.rviz"/>-->
-    <node if="0" name="rviz" pkg="rviz" type="rviz" args="-d $(dirname)/$(arg robot_type).rviz"/>
+        <node if="0" name="rviz" pkg="rviz" type="rviz" args="-d $(dirname)/$(arg robot_type).rviz"/>
     </group>
 
     <include file="$(find subt_example)/launch/teleop.launch"/>

@@ -5,6 +5,9 @@
     <arg name="robot_type" default="x1"/>
     <arg name="points" default="points_slow"/>
     <arg name="points_min_dist" default="0.125"/>
+    <arg name="planning_freq" default="0.5"/>
+    <arg name="path_planned" default="path"/>
+    <arg name="max_cloud_age" default="2.0"/>
 
     <include file="$(find subt_virtual)/launch/helpers/for.launch">
         <arg name="items" value="$(arg robots)"/>
@@ -32,7 +35,7 @@
             normal_name: normal_x
             map_frame: subt
             robot_frame: $(arg robot)/base_footprint
-            max_cloud_age: 2.0
+            max_cloud_age: $(arg max_cloud_age)
             input_range: 15.0
             max_pitch: 0.611
             max_roll: 0.524
@@ -57,7 +60,7 @@
             suppress_base_reward: true
             path_cost_pow: 0.75
             min_path_cost: 1.0
-            planning_freq: 0.5
+            planning_freq: $(arg planning_freq)
             random_start: false
             plan_from_goal_dist: 1.5
             bootstrap_z: .nan
@@ -148,6 +151,6 @@
         <remap from="map_diff" to="map_diff"/>
 
         <!-- Planned path -->
-        <remap from="path" to="path"/>
+        <remap from="path" to="$(arg path_planned)"/>
     </node>
 </launch>

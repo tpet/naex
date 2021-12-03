@@ -5,5 +5,5 @@
     <arg name="z_offset" default="0.0"/>
 
     <node name="base_footprint_pub" pkg="tf2_ros" type="static_transform_publisher"
-          args="0. 0. $(arg z_offset) 0. 0. 0. 1. $(arg base_link) $(arg base_footprint)"/>
+          args="0. 0. $(arg z_offset) 0. 0. 0. 1. $(arg base_link) $(arg base_footprint)" output="log"/>
 </launch>

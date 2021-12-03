@@ -94,51 +94,51 @@
 
     <!-- SubT virtual EXPLORER_X1 RGBD sensors -->
     <group if="$(eval robot_type == 'explorer_x1')">
-    <node name="front_rgbd_points_throttle" pkg="topic_tools" type="throttle"
-          args="messages front_rgbd/points 1.0 front_rgbd/points_slow"
-          respawn="true" respawn_delay="1.0" output="log"/>
-    <node name="left_rgbd_points_throttle" pkg="topic_tools" type="throttle"
-          args="messages left_rgbd/points 1.0 left_rgbd/points_slow"
-          respawn="true" respawn_delay="1.0" output="log"/>
-    <node name="right_rgbd_points_throttle" pkg="topic_tools" type="throttle"
-          args="messages right_rgbd/points 1.0 right_rgbd/points_slow"
-          respawn="true" respawn_delay="1.0" output="log"/>
-    <node name="rear_rgbd_points_throttle" pkg="topic_tools" type="throttle"
-          args="messages rear_rgbd/points 1.0 rear_rgbd/points_slow"
-          respawn="true" respawn_delay="1.0" output="log"/>
+        <node name="front_rgbd_points_throttle" pkg="topic_tools" type="throttle"
+              args="messages front_rgbd/points 1.0 front_rgbd/points_slow"
+              respawn="true" respawn_delay="1.0" output="log"/>
+        <node name="left_rgbd_points_throttle" pkg="topic_tools" type="throttle"
+              args="messages left_rgbd/points 1.0 left_rgbd/points_slow"
+              respawn="true" respawn_delay="1.0" output="log"/>
+        <node name="right_rgbd_points_throttle" pkg="topic_tools" type="throttle"
+              args="messages right_rgbd/points 1.0 right_rgbd/points_slow"
+              respawn="true" respawn_delay="1.0" output="log"/>
+        <node name="rear_rgbd_points_throttle" pkg="topic_tools" type="throttle"
+              args="messages rear_rgbd/points 1.0 rear_rgbd/points_slow"
+              respawn="true" respawn_delay="1.0" output="log"/>
 
-    <node name="front_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
-        <rosparam subst_value="true">
-            leaf_size: $(arg points_min_dist)
-            filter_field_name: ""
-        </rosparam>
-        <remap from="~input" to="front_rgbd/points_slow"/>
-        <remap from="~output" to="front_rgbd/points_slow_filtered"/>
-    </node>
-    <node name="left_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
-        <rosparam subst_value="true">
-            leaf_size: $(arg points_min_dist)
-            filter_field_name: ""
-        </rosparam>
-        <remap from="~input" to="left_rgbd/points_slow"/>
-        <remap from="~output" to="left_rgbd/points_slow_filtered"/>
-    </node>
-    <node name="right_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
-        <rosparam subst_value="true">
-            leaf_size: $(arg points_min_dist)
-            filter_field_name: ""
-        </rosparam>
-        <remap from="~input" to="right_rgbd/points_slow"/>
-        <remap from="~output" to="right_rgbd/points_slow_filtered"/>
-    </node>
-    <node name="rear_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
-        <rosparam subst_value="true">
-            leaf_size: $(arg points_min_dist)
-            filter_field_name: ""
-        </rosparam>
-        <remap from="~input" to="rear_rgbd/points_slow"/>
-        <remap from="~output" to="rear_rgbd/points_slow_filtered"/>
-    </node>
+        <node name="front_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
+            <rosparam subst_value="true">
+                leaf_size: $(arg points_min_dist)
+                filter_field_name: ""
+            </rosparam>
+            <remap from="~input" to="front_rgbd/points_slow"/>
+            <remap from="~output" to="front_rgbd/points_slow_filtered"/>
+        </node>
+        <node name="left_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
+            <rosparam subst_value="true">
+                leaf_size: $(arg points_min_dist)
+                filter_field_name: ""
+            </rosparam>
+            <remap from="~input" to="left_rgbd/points_slow"/>
+            <remap from="~output" to="left_rgbd/points_slow_filtered"/>
+        </node>
+        <node name="right_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
+            <rosparam subst_value="true">
+                leaf_size: $(arg points_min_dist)
+                filter_field_name: ""
+            </rosparam>
+            <remap from="~input" to="right_rgbd/points_slow"/>
+            <remap from="~output" to="right_rgbd/points_slow_filtered"/>
+        </node>
+        <node name="rear_rgbd_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
+            <rosparam subst_value="true">
+                leaf_size: $(arg points_min_dist)
+                filter_field_name: ""
+            </rosparam>
+            <remap from="~input" to="rear_rgbd/points_slow"/>
+            <remap from="~output" to="rear_rgbd/points_slow_filtered"/>
+        </node>
     </group>
 
     <!-- SubT virtual Jeanine RGBD sensor -->
@@ -154,6 +154,22 @@
                 </rosparam>
                 <remap from="~input" to="rgbd_front/points_slow"/>
                 <remap from="~output" to="rgbd_front/points_slow_filtered"/>
+            </node>
+    </group>
+
+    <!-- SMB lidar front sensor -->
+    <group if="$(eval robot_type == 'smb')">
+        <node name="lidar_front_points_throttle" pkg="topic_tools" type="throttle"
+              args="messages lidar_front_points $(arg points_slow_freq) lidar_front_points_slow"
+              respawn="true" respawn_delay="1.0" output="log"/>
+
+            <node name="lidar_front_points_voxels" pkg="nodelet" type="nodelet" args="standalone pcl/VoxelGrid" output="log">
+                <rosparam subst_value="true">
+                    leaf_size: $(arg points_min_dist)
+                    filter_field_name: ""
+                </rosparam>
+                <remap from="~input" to="lidar_front_points_slow"/>
+                <remap from="~output" to="lidar_front_points_slow_filtered"/>
             </node>
     </group>
 </launch>

@@ -2,7 +2,7 @@
 <launch>
     <arg name="robot" default="X1"/>
 
-    <node name="odom_setter" pkg="subt_virtual" type="odom_setter">
+    <node name="odom_setter" pkg="subt_virtual" type="odom_setter" output="log">
         <rosparam>
             pose_cov_diag: [.1, .1, .1, .1, .1, .1]
             twist_cov_diag: [.1, .1, .1, .1, .1, .1]
@@ -10,7 +10,7 @@
         <remap from="input" to="odom"/>
         <remap from="output" to="uncertain_odom"/>
     </node>
-    <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="robot_pose_ekf">
+    <node pkg="robot_pose_ekf" type="robot_pose_ekf" name="robot_pose_ekf" output="log">
         <param name="output_frame" value="$(arg robot)/odom"/>
         <!--
         According to docs base_footprint should be used but the pose passthrough
