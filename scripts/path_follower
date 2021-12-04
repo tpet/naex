@@ -105,6 +105,7 @@ class PathFollower(object):
         self.force_through_after = rospy.get_param('~force_through_after', 15.)
         self.allow_backward = rospy.get_param('~allow_backward', True)
         self.backtrack_after = rospy.get_param('~backtrack_after', 30.)
+        self.obstacle_avoidance = rospy.get_param('~obstacle_avoidance', True)
 
         self.path_lock = RLock()
         self.path_msg = None  # Path message
@@ -524,21 +525,22 @@ class PathFollower(object):
 
                 clearance_indices = range(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
                 self.publish_markers(self.path_msg, clearance_indices=clearance_indices, waypoint_indices=[i])
-                if not self.check_pose_clearance(self.path_msg.poses[i].pose)[0]:
-                    if self.stuck_since is None:
-                        self.stuck_since = rospy.Time.now()
-                    stuck_duration = (rospy.Time.now() - self.stuck_since).to_sec()
-                    if stuck_duration < self.force_through_after:
-                        rospy.logwarn('Path to goal obstructed (for %.1f s), waiting...', stuck_duration)
-                        self.cmd_pub.publish(Twist())
-                        return
+                if self.obstacle_avoidance:
+                    if not self.check_pose_clearance(self.path_msg.poses[i].pose)[0]:
+                        if self.stuck_since is None:
+                            self.stuck_since = rospy.Time.now()
+                        stuck_duration = (rospy.Time.now() - self.stuck_since).to_sec()
+                        if stuck_duration < self.force_through_after:
+                            rospy.logwarn('Path to goal obstructed (for %.1f s), waiting...', stuck_duration)
+                            self.cmd_pub.publish(Twist())
+                            return
+                        else:
+                            rospy.logwarn('Path to goal obstructed for %.1f s >= %.1f s, forcing through...',
+                                          stuck_duration, self.force_through_after)
                     else:
-                        rospy.logwarn('Path to goal obstructed for %.1f s >= %.1f s, forcing through...',
-                                      stuck_duration, self.force_through_after)
-                else:
-                    if self.stuck_since:
-                        rospy.logwarn('Path free again.')
-                    self.stuck_since = None
+                        if self.stuck_since:
+                            rospy.logwarn('Path free again.')
+                        self.stuck_since = None
 
                 # Convert the goal into robot frame.
                 local_goal = p2e(np.linalg.solve(pose, e2p(goal)))
