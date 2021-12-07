@@ -71,6 +71,8 @@ class PathFollower(object):
         self.robot_frame = rospy.get_param('~robot_frame', 'base_footprint')
         self.control_freq = rospy.get_param('~control_freq', 10.0)
         assert 1.0 < self.control_freq < 25.0
+        self.local_goal_dims = rospy.get_param('~local_goal_dims', 'xy')
+        assert self.local_goal_dims in ('xy', 'xyz')
         self.goal_reached_dist = rospy.get_param('~goal_reached_dist', 0.2)
         self.goal_reached_angle = rospy.get_param('~goal_reached_angle', 0.2)
         self.use_path_theta = rospy.get_param('~use_path_theta', 'last')
@@ -542,9 +544,13 @@ class PathFollower(object):
 
                 # Convert the goal into robot frame.
                 local_goal = p2e(np.linalg.solve(pose, e2p(goal)))
-                rospy.logdebug('Local goal: %.2f, %.2f, %.2f', *local_goal.ravel().tolist())
-                rospy.loginfo_throttle(1.0, 'Local goal: %.2f, %.2f, %.2f', *local_goal.ravel().tolist())
+                if self.local_goal_dims == 'xy':
+                    local_goal[2, 0] = 0.
                 dist = np.linalg.norm(local_goal)
+                rospy.logdebug('Local goal: %.2f, %.2f, %.2f (%.2f m apart)',
+                               *(local_goal.ravel().tolist() + [dist]))
+                rospy.loginfo_throttle(1.0, 'Local goal: %.2f, %.2f, %.2f (%.2f m apart)',
+                                       *(local_goal.ravel().tolist() + [dist]))
 
                 # TODO: Use goal theta.
                 # Angular displacement from [-pi, pi)
