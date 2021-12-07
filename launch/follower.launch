@@ -9,6 +9,8 @@
     <arg name="points" default="points_slow_filtered"/>
     <arg name="keep_path" default="3."/>
     <arg name="map_frame" default="subt"/>
+    <arg name="max_age" default="1.0"/>
+    <arg name="obstacle_avoidance" default="true"/>
 
     <node name="path_follower" pkg="naex" type="path_follower"
           respawn="true" respawn_delay="1.0" output="screen">
@@ -21,14 +23,15 @@
             goal_reached_dist: 0.3
             goal_reached_angle: .inf
             use_path_theta: none
-            max_age: 1.0
+            max_age: $(arg max_age)
+            obstacle_avoidance: $(arg obstacle_avoidance)
             <!--
             Max. path distances, tail is consumed first by reached goals.
             A higher value is used in the beginning to traverse across
             unobserved area around robot.
             -->
-            max_path_dist: [0.8, 2.5, 2.5, 2.5]
-            look_ahead: 0.8
+            max_path_dist: [2.0, 2.5, 2.5, 2.5]
+            look_ahead: 2.0
             max_speed: 1.0
             allow_backward: false
             max_force_through_speed: 0.2
