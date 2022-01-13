@@ -59,7 +59,7 @@
             self_factor: 0.5
             suppress_base_reward: true
             path_cost_pow: 0.75
-            min_path_cost: 1.0
+            min_path_cost: 2.0
             planning_freq: $(arg planning_freq)
             random_start: false
             plan_from_goal_dist: 1.5
