@@ -11,6 +11,8 @@
     <arg name="map_frame" default="subt"/>
     <arg name="max_age" default="1.0"/>
     <arg name="obstacle_avoidance" default="false"/>
+    <arg name="local_goal_dims" default="'xyz'"/>
+    <arg name="goal_reached_dist" default="0.3"/>
 
     <node name="path_follower" pkg="naex" type="path_follower"
           respawn="true" respawn_delay="1.0" output="screen">
@@ -20,7 +22,7 @@
             odom_frame: $(arg robot)/odom
             robot_frame: $(arg robot)/base_footprint
             control_freq: 10.0
-            goal_reached_dist: 0.3
+            goal_reached_dist: $(arg goal_reached_dist)
             goal_reached_angle: .inf
             use_path_theta: none
             max_age: $(arg max_age)
@@ -41,6 +43,7 @@
             clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
             show_clearance_pos: [-2, 2]
             min_points_obstacle: 3
+            local_goal_dims: $(arg local_goal_dims)
 
             force_through_after: 10.
             backtrack_after: 20.
