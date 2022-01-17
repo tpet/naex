@@ -13,6 +13,7 @@
     <arg name="obstacle_avoidance" default="false"/>
     <arg name="local_goal_dims" default="'xyz'"/>
     <arg name="goal_reached_dist" default="0.3"/>
+    <arg name="look_ahead" default="0.8"/>
 
     <node name="path_follower" pkg="naex" type="path_follower"
           respawn="true" respawn_delay="1.0" output="screen">
@@ -33,7 +34,7 @@
             unobserved area around robot.
             -->
             max_path_dist: [2.0, 2.5, 2.5, 2.5]
-            look_ahead: 0.8
+            look_ahead: $(arg look_ahead)
             max_speed: 1.0
             allow_backward: true
             max_force_through_speed: 0.2
