@@ -30,6 +30,7 @@
             max_speed: 1.0
             allow_backward: false
             max_force_through_speed: 0.2
+            turn_on_spot_angle: 0.524  <!-- 30 deg. -->
             max_angular_rate: 1.5
             keep_path: 3.
             keep_cloud_box: [[-3.0, 3.0], [-3.0, 3.0], [-2.0, 2.0]]

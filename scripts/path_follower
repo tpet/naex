@@ -88,6 +88,7 @@ class PathFollower(object):
         self.look_ahead = rospy.get_param('~look_ahead', 1.)
         self.max_speed = rospy.get_param('~max_speed', 1.0)  # m/s
         self.max_force_through_speed = rospy.get_param('~max_force_through_speed', .25)
+        self.turn_on_spot_angle = rospy.get_param('~turn_on_spot_angle', np.pi / 6)
         self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)  # rad/s
         self.max_roll = rospy.get_param('~max_roll', 0.7)  # rad
         self.max_pitch = rospy.get_param('~max_pitch', 0.7)  # rad
@@ -593,7 +594,7 @@ class PathFollower(object):
 
             # Linear velocity
             # p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
-            p_dist = 1.5 * max(0., 1. - (abs(angle) / (np.pi / 6.))**2)
+            p_dist = 1.5 * max(0., 1. - (abs(angle) / self.turn_on_spot_angle)**2)
             # p_dist = 1.5 * max(np.cos(3. * angle), 0.)
             # p_dist = 1.5 * np.exp(-(angle/0.25)**2)
             speed = p_dist * dist
