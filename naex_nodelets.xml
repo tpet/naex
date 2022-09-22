@@ -1,0 +1,7 @@
+<library path="lib/libnaex_nodelets">
+    <class name="naex/traversability" type="naex::TraversabilityNodelet" base_class_type="nodelet::Nodelet">
+        <description>
+            Point cloud traversability estimation from local geometry.
+        </description>
+    </class>
+</library>

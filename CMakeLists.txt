@@ -29,6 +29,7 @@ set(CATKIN_DEPS
     geometry_msgs
     message_runtime
     nav_msgs
+    nodelet
     roscpp
     sensor_msgs
     std_msgs
@@ -68,6 +69,10 @@ target_link_libraries(
         OpenMP::OpenMP_CXX
 )
 
+add_library(naex_nodelets src/traversability_nodelet.cpp)
+add_dependencies(naex_nodelets ${catkin_EXPORTED_TARGETS})
+target_link_libraries(naex_nodelets ${catkin_LIBRARIES})
+
 # add_executable(incremental_flann_index src/incremental_flann_index.cpp)
 # target_link_libraries(incremental_flann_index ${eigen_LIBRARIES} ${Flann_LIBRARY} ${lz4_LIBRARIES} OpenMP::OpenMP_CXX)
 
@@ -94,3 +99,12 @@ install(
         launch/
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
 )
+
+install(
+    TARGETS naex_nodelets
+    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
+)
+
+install(FILES naex_nodelets.xml DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})

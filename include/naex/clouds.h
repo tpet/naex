@@ -24,6 +24,12 @@ bool bigendian()
     return !(*(uint8_t*)&num == 1);
 }
 
+inline
+size_t num_points(const sensor_msgs::PointCloud2& cloud)
+{
+  return size_t(cloud.height) * cloud.width;
+}
+
     const sensor_msgs::PointField* find_field(
             const sensor_msgs::PointCloud2& cloud,
             const std::string& name)
@@ -149,10 +155,10 @@ bool bigendian()
             uint32_t height,
             uint32_t width)
     {
-        cloud.data.resize(height * width * cloud.point_step);
         cloud.height = height;
         cloud.width = width;
         cloud.row_step = width * cloud.point_step;
+        cloud.data.resize(height * cloud.row_step, 0);
     }
 
 //    template<typename P, typename N>
