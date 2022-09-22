@@ -29,11 +29,7 @@ void compute_traversability(const sensor_msgs::PointCloud2& input,
   assert(input.row_step == input.width * input.point_step);
 
   // Construct rotation to a fixed frame with z upward.
-  geometry_msgs::Transform rotation = transform;
-  rotation.translation.x = 0.0;
-  rotation.translation.y = 0.0;
-  rotation.translation.z = 0.0;
-  Transform tf(tf2::transformToEigen(transform));
+  Mat3 rotation = tf2::transformToEigen(transform).rotation().cast<float>();
 
   // Initialize output with position, normal, and traversability fields.
   output.header = input.header;
@@ -100,7 +96,7 @@ void compute_traversability(const sensor_msgs::PointCloud2& input,
     Vec3Map n(normal[i]);
     n = solver.eigenvectors().col(0);
     // Use fixed frame for inclination.
-    inclination[i][0] = std::acos(std::abs((tf * n)(2)));
+    inclination[i][0] = std::acos(std::abs((rotation * n)(2)));
     normal_std[i][0] = std::sqrt(solver.eigenvalues()(0));
     cost[i][0] = inclination_weight * inclination[i][0] + normal_std_weight * (normal_std[i][0] / radius);
   }
