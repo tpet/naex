@@ -44,6 +44,8 @@ void compute_traversability(const sensor_msgs::PointCloud2& input,
   append_field<float>("normal_std", 1, output);
   append_field<float>("cost", 1, output);
   resize_cloud(output, output.height, output.width);
+  if (num_points(output) == 0)
+    return;
 
   auto position_in = flann_matrix_view<float>(const_cast<sensor_msgs::PointCloud2&>(input), "x", 3);
 //  auto position_in =  const_flann_matrix_view<float>(input, "x", 3);
