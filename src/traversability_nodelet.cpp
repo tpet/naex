@@ -30,6 +30,13 @@ public:
     getPrivateNodeHandle().param("normal_std_weight", proc_.normal_std_weight_, proc_.normal_std_weight_);
     getPrivateNodeHandle().param("fixed_frame", fixed_frame_, fixed_frame_);
     getPrivateNodeHandle().param("timeout", timeout_, timeout_);
+    NODELET_INFO("Radius: %.3f m", proc_.radius_);
+    NODELET_INFO("Max dist: %.3f m", proc_.max_dist_);
+    NODELET_INFO("Min support: %i", proc_.min_support_);
+    NODELET_INFO("Inclination weight: %.3f", proc_.inclination_weight_);
+    NODELET_INFO("Normal std. weight: %.3f", proc_.normal_std_weight_);
+    NODELET_INFO("Fixed frame: %s", fixed_frame_.c_str());
+    NODELET_INFO("Timeout: %.3f s", timeout_);
   }
   void advertise()
   {
