@@ -37,7 +37,8 @@ public:
   }
   void subscribe()
   {
-    tf_listener_ = std::make_unique<tf2_ros::TransformListener>(tf_);
+    if (!fixed_frame_.empty())
+      tf_listener_ = std::make_unique<tf2_ros::TransformListener>(tf_);
     cloud_sub_ = getNodeHandle().subscribe("input", 2, &TraversabilityNodelet::onCloud, this);
   }
   void onInit() override
