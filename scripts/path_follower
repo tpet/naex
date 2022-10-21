@@ -203,7 +203,7 @@ class PathFollower(object):
         # Allow to stop the controller with an empty path.
         if not msg.poses:
             self.clear_path()
-            rospy.loginfo('Path cleared.', len(msg.poses))
+            rospy.loginfo('Path cleared. %s', len(msg.poses))
             return
 
         # Keep a recent path if keep_path is positive.
