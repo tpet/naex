@@ -367,7 +367,8 @@ class PathFollower(object):
                     pts_marker.points.append(Point(*p))
                     pts_marker.colors.append(ColorRGBA(1., 0., 0., .5))
 
-        markers.append(pts_marker)
+        if pts_marker.points:
+            markers.append(pts_marker)
 
         return markers
 
