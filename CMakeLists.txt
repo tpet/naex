@@ -66,6 +66,19 @@ target_link_libraries(
         OpenMP::OpenMP_CXX
 )
 
+add_executable(grid_planner src/grid_planner_node.cpp)
+target_link_libraries(
+    grid_planner
+        backtrace
+        ${Boost_LIBRARIES}
+        ${catkin_LIBRARIES}
+        dl
+        ${eigen_LIBRARIES}
+        ${flann_LIBRARIES}
+        ${lz4_LIBRARIES}
+        OpenMP::OpenMP_CXX
+)
+
 add_library(naex_nodelets src/traversability_nodelet.cpp)
 add_dependencies(naex_nodelets ${catkin_EXPORTED_TARGETS})
 target_link_libraries(naex_nodelets ${catkin_LIBRARIES})
