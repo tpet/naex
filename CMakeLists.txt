@@ -43,9 +43,6 @@ catkin_package(
     CATKIN_DEPENDS ${CATKIN_DEPS}
 )
 
-#add_executable(follower src/follower_node.cpp)
-#target_link_libraries(follower ${catkin_LIBRARIES})
-
 add_executable(lidar_model src/lidar_model.cpp)
 target_link_libraries(
     lidar_model
