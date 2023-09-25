@@ -5,6 +5,7 @@
 //#include <naex/cloud_filter.h>
 #include <naex/filter.h>
 //#include <naex/geom.h>
+#include <naex/hash.h>
 #include <naex/timer.h>
 #include <naex/types.h>
 #include <random>
@@ -48,14 +49,6 @@ void random_permutation(size_t n, C& indices)
     shuffle(indices.begin(), indices.end());
     ROS_DEBUG("Random permutation of %lu points created (%.6f s).",
               n, t.seconds_elapsed());
-}
-
-template <class T>
-inline void hash_combine(std::size_t& seed, const T& v)
-{
-    // Boost-like hash combine
-    std::hash<T> hasher;
-    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
 template<typename I>
