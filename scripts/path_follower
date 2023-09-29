@@ -1,9 +1,19 @@
 #!/usr/bin/env python
-"""
-Simple path follower.
+"""Simple path follower.
 
-Always acts on the last received plan.
-An empty plan means no action (stopping the robot).
+It always acts on the last received plan which can be hold onto for a
+specified duration. An empty plan means no action (stopping the robot).
+
+The main control loop is (almost) stateless:
+(1) The closest point on the path is found.
+(2) A look-ahead point at a given distance is used as current goal.
+(3) Bounded proportional control navigates robot towards the goal.
+
+It supports 2D and 3D modes.
+In 2D mode, the path and all poses are converted into 2D, meaning that z =
+roll = pitch = 0 for (1)-(3).
+
+Point cloud inputs can be used to check for needed clearance.
 """
 from __future__ import absolute_import, division, print_function
 from geometry_msgs.msg import (
@@ -37,7 +47,6 @@ def slots(msg):
 
 
 def tf_to_pose(tf):
-    # tf = Transform()
     pose = Pose()
     pose.position.x = tf.translation.x
     pose.position.y = tf.translation.y
@@ -62,6 +71,24 @@ def p2e(xh):
 def e2p(x):
     xh = np.concatenate((x, np.ones((1, x.shape[1]))))
     return xh
+
+
+def points_in_2d(x, in_place=False):
+    assert x.shape[0] == 3
+    if not in_place:
+        x = np.array(x, copy=True)
+    x[2, :] = 0
+    return x
+
+
+def pose_in_2d(pose, in_place=False):
+    assert pose.shape == (4, 4)
+    if not in_place:
+        pose = np.array(pose, copy=True)
+    r, p, y = euler_from_matrix(pose[:3, :3])
+    pose[:3, :3] = euler_matrix(0., 0., y)[:3, :3]
+    pose[2, 3] = 0
+    return pose
 
 
 class PathFollower(object):
@@ -222,6 +249,8 @@ class PathFollower(object):
 
         # Update path and index.
         path = np.array([slots(p.pose.position) for p in msg.poses])
+        if self.local_goal_dims == 'xy':
+            path = points_in_2d(path.T).T
         path_x_index = cKDTree(path)
         with self.path_lock:
             self.clear_path()
@@ -494,6 +523,8 @@ class PathFollower(object):
 
                 # Get the last position on the path within look-ahead radius,
                 # else extend the radius to max. path distance.
+                if self.local_goal_dims == 'xy':
+                    pose = pose_in_2d(pose)
                 ind = self.path_x_index.query_ball_point(pose[:3, 3:].T, r=self.look_ahead)[0]
                 if not ind:
                     rospy.logwarn('Distance to path higher than look ahead %.1f m.', self.look_ahead)
