@@ -36,7 +36,10 @@ import tf2_ros
 from threading import RLock
 from timeit import default_timer as timer
 from visualization_msgs.msg import Marker, MarkerArray
-from tf.transformations import euler_from_matrix
+from tf.transformations import (
+    euler_from_matrix,
+    euler_matrix,
+)
 
 np.set_printoptions(precision=2)
 
