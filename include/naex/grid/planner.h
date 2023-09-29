@@ -14,6 +14,7 @@
 #include <ros/ros.h>
 #include <sensor_msgs/point_cloud2_iterator.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <std_msgs/Float32.h>
 #include <tf2_eigen/tf2_eigen.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -181,9 +182,11 @@ public:
         std::vector<float> max_costs;
         pnh_.param("max_costs", max_costs, max_costs);
         max_costs_ = max_costs;
-        pnh_.param("min_path_cost", min_path_cost_, min_path_cost_);
         pnh_.param("planning_freq", planning_freq_, planning_freq_);
-        pnh_.param("plan_from_goal_dist", plan_from_goal_dist_, plan_from_goal_dist_);
+        pnh_.param("start_on_request", start_on_request_, start_on_request_);
+        pnh_.param("stop_on_goal", stop_on_goal_, stop_on_goal_);
+        pnh_.param("goal_reached_dist", goal_reached_dist_, goal_reached_dist_);
+        pnh_.param("mode", mode_, mode_);
 
         int num_input_clouds = 1;
         pnh_.param("num_input_clouds", num_input_clouds, num_input_clouds);
@@ -195,9 +198,10 @@ public:
         tf_ = std::make_shared<tf2_ros::Buffer>();
         tf_sub_ = std::make_shared<tf2_ros::TransformListener>(*tf_);
 
-        map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 2);
-        local_map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("local_map", 2);
-        path_pub_ = nh_.advertise<nav_msgs::Path>("path", 2);
+        map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("map", 2, true);
+        local_map_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("local_map", 2, true);
+        path_pub_ = nh_.advertise<nav_msgs::Path>("path", 2, true);
+        planning_freq_pub_ = nh_.advertise<std_msgs::Float32>("planning_freq", 2, true);
 
         for (int i = 0; i < num_input_clouds; ++i)
         {
@@ -210,28 +214,70 @@ public:
         if (planning_freq_ > 0.f)
         {
             planning_timer_ = nh_.createTimer(ros::Rate(planning_freq_),
-                                              &Planner::planningTimer, this);
+                                              &Planner::planningTimer, this, false, false);
             ROS_INFO("Re-plan automatically at %.1f Hz using the last request.",
                      planning_freq_);
+
+            if (start_on_request_)
+            {
+                ROS_WARN("Automatic re-planning will start on request.");
+            }
+            else
+            {
+                startPlanning();
+            }
         }
         else
         {
-            ROS_WARN("Don't re-plan automatically using the last request.");
+            ROS_INFO("Don't re-plan automatically using the last request.");
         }
 
-        get_plan_service_ = nh_.advertiseService("get_plan", &Planner::planSafe, this);
+        if (stop_on_goal_)
+        {
+            ROS_WARN("Automatic re-planning will stop on reaching goal.");
+        }
+
+        get_plan_service_ = nh_.advertiseService("get_plan", &Planner::requestPlan, this);
 
         ROS_INFO("Node initialized.");
     }
 
+    void startPlanning()
+    {
+        if (!(planning_freq_ > 0.f))
+        {
+            ROS_ERROR("Invalid planning frequency (%.3f) specified.", planning_freq_);
+            return;
+        }
+        // planning_timer_ = nh_.createTimer(ros::Rate(planning_freq_),
+        //                                   &Planner::planningTimer, this);
+        planning_timer_.start();
+        std_msgs::Float32 msg;
+        msg.data = planning_freq_;
+        planning_freq_pub_.publish(msg);
+        ROS_WARN("Planning started.");
+    }
+
+    nav_msgs::Path emptyPath()
+    {
+        nav_msgs::Path msg;
+        msg.header.frame_id = map_frame_;
+        msg.header.stamp = ros::Time::now();
+        return msg;
+    }
+
+    void stopPlanning()
+    {
+        planning_timer_.stop();
+        path_pub_.publish(emptyPath());
+        std_msgs::Float32 msg;
+        msg.data = 0;
+        planning_freq_pub_.publish(msg);
+        ROS_WARN("Planning stopped.");
+    }
+
     bool plan(nav_msgs::GetPlanRequest& req, nav_msgs::GetPlanResponse& res)
     {
-        if (grid_.empty())
-        {
-            ROS_WARN("Cannot plan in empty grid.");
-            return false;
-        }
-
         Timer t;
         Timer t_part;
         ROS_INFO("Planning request from %s to %s with tolerance %.1f m.",
@@ -242,6 +288,12 @@ public:
             last_request_ = req;
         }
         
+        if (grid_.empty())
+        {
+            ROS_WARN("Cannot plan in empty grid.");
+            return false;
+        }
+
         geometry_msgs::PoseStamped start = req.start;
         if (!isValid(start.pose.position))
         {
@@ -250,10 +302,26 @@ public:
             transform_to_pose(tf, start);
         }
 
-        Vec3 goal_position = toVec3(req.goal.pose.position);
+        if (mode_ == 2)
+        {
+            start.pose.position.z = 0.f;
+            req.goal.pose.position.z = 0.f;
+        }
+        Vec3 p1 = toVec3(req.goal.pose.position);
 
         // TODO: Use the nearest traversable point to robot as the starting point.
         Vec3 p0 = toVec3(start.pose.position);
+        if (stop_on_goal_)
+        {
+            // Stop if close to the goal.
+            const float dist_to_goal = (p1 - p0).norm();
+            ROS_INFO("Distance to goal: %.3f m.", dist_to_goal);
+            if (dist_to_goal <= goal_reached_dist_)
+            {
+                stopPlanning();
+                return false;
+            }
+        }
         
         const VertexId v0 = grid_.cellId(grid_.pointToCell({p0.x(), p0.y()}));
         
@@ -289,7 +357,7 @@ public:
             if (v1 == INVALID_VERTEX)
             {
                 ROS_ERROR("No feasible path towards %s was found (%.6f, %.3f s).",
-                          format(goal_position).c_str(),
+                          format(p1).c_str(),
                           t_part.seconds_elapsed(), t.seconds_elapsed());
                 return false;
             }
@@ -300,10 +368,11 @@ public:
             appendPath(path_vertices, grid_, res.plan);
             ROS_INFO("Path with %lu poses toward goal %s planned (%.3f s).",
                      res.plan.poses.size(),
-                     format(goal_position).c_str(),
+                     format(p1).c_str(),
                      t.seconds_elapsed());
             return true;
         }
+        ROS_WARN("Goal not valid.");
 
         // TODO: Return random path in exploration mode.
         return false;
@@ -313,6 +382,7 @@ public:
                       const Grid& grid,
                       const std::vector<Cost>& path_costs)
     {
+        // TODO: Allow sending local map.
         append_field<float>("x", 1, cloud);
         append_field<float>("y", 1, cloud);
         append_field<float>("z", 1, cloud);
@@ -356,9 +426,19 @@ public:
         }
     }
 
+    bool requestPlan(nav_msgs::GetPlanRequest& req, nav_msgs::GetPlanResponse& res)
+    {
+        ROS_INFO("Planning request received.");
+        if (start_on_request_)
+        {
+            startPlanning();
+        }
+        return planSafe(req, res);
+    }
+
     void planningTimer(const ros::TimerEvent& event)
     {
-        ROS_DEBUG("Planning timer callback.");
+        ROS_INFO("Planning timer callback.");
         Timer t;
         nav_msgs::GetPlanRequest req;
         {
@@ -440,6 +520,7 @@ protected:
     ros::Publisher map_pub_;
     ros::Publisher updated_map_pub_;
     ros::Publisher local_map_pub_;
+    ros::Publisher planning_freq_pub_;
     ros::Publisher path_pub_;
 
     // Subscribers
@@ -463,14 +544,12 @@ protected:
     Costs max_costs_;
 
     // Planning
-    float min_path_cost_{0.0};
     // Re-planning frequency, repeating the last request if positive.
     float planning_freq_{1.0};
-    // Randomize starting vertex within tolerance radius.
-    bool random_start_{false};
-    double plan_from_goal_dist_{0.0};
-    geometry_msgs::PoseStamped last_start_{};
-    geometry_msgs::PoseStamped last_goal_{};
+    bool start_on_request_{true};
+    bool stop_on_goal_{true};
+    float goal_reached_dist_{std::numeric_limits<float>::quiet_NaN()};
+    int mode_{2};
 };
 
 }  // namespace grid
