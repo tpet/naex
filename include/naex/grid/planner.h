@@ -362,11 +362,10 @@ public:
         Timer t;
         nav_msgs::GetPlanRequest req;
         {
-            // Lock lock(last_request_mutex_);
             req = last_request_;
         }
         nav_msgs::GetPlanResponse res;
-        if (!plan(req, res))
+        if (!planSafe(req, res))
         {
             return;
         }
