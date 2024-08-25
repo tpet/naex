@@ -164,6 +164,7 @@ public:
 
         pnh_.param("position_field", position_field_, position_field_);
         pnh_.param("cost_fields", cost_fields_, cost_fields_);
+        pnh_.param("cloud_weights", cloud_weights_, cloud_weights_);
         pnh_.param("map_frame", map_frame_, map_frame_);
         pnh_.param("robot_frame", robot_frame_, robot_frame_);
         pnh_.param("tf_timeout", tf_timeout_, tf_timeout_);
@@ -506,7 +507,7 @@ public:
         {
             Vec3 p(x_it[0], x_it[1], x_it[2]);
             p = transform * p;
-            grid_.updatePointCost({p.x(), p.y()}, level, cost_it[0]);
+            grid_.updatePointCost({p.x(), p.y()}, level, cloud_weights_[level]*cost_it[0]);
         }
     }
 
@@ -561,6 +562,7 @@ protected:
     // Input
     std::string position_field_{"x"};
     std::vector<std::string> cost_fields_;
+    std::vector<float> cloud_weights_;
     float max_cloud_age_{5.0};
     float input_range_{10.0};
 
