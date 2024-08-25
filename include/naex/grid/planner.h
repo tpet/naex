@@ -175,7 +175,6 @@ public:
         pnh_.param("cell_size", cell_size, cell_size);
         float forget_factor = 1.0;
         pnh_.param("forget_factor", forget_factor, forget_factor);
-        grid_ = Grid(cell_size, forget_factor);
 
         // 4 or 8
         pnh_.param("neighborhood", neighborhood_, neighborhood_);
@@ -312,10 +311,9 @@ public:
             start.pose.position.z = 0.f;
             req.goal.pose.position.z = 0.f;
         }
-        Vec3 p1 = toVec3(req.goal.pose.position);
 
-        // TODO: Use the nearest traversable point to robot as the starting point.
         Vec3 p0 = toVec3(start.pose.position);
+        Vec3 p1 = toVec3(req.goal.pose.position);
         if (stop_on_goal_)
         {
             // Stop if close to the goal.
@@ -328,7 +326,32 @@ public:
             }
         }
         
-        const VertexId v0 = grid_.cellId(grid_.pointToCell({p0.x(), p0.y()}));
+        Graph graph(grid_, neighborhood_, max_costs_);
+        VertexId v0 = grid_.cellId(grid_.pointToCell({p0.x(), p0.y()}));
+        if (!graph.costsInBounds(v0))
+        {
+            ROS_WARN("Robot position %s is not traversable.",
+                     format(toVec3(grid_.point(v0))).c_str());
+        }
+
+        // Use the nearest traversable point to robot as the starting point.
+        float best_dist = std::numeric_limits<float>::infinity();
+        for (VertexId v = 0; v < grid_.size(); ++v)
+        {
+            if (!graph.costsInBounds(grid_.costs(v)))
+            {
+                continue;
+            }
+
+            Value dist = (toVec3(grid_.point(v)) - p0).norm();
+            if (dist < best_dist)
+            {
+                v0 = v;
+                best_dist = dist;
+            }
+        }
+        ROS_INFO("Closest traversable point to start: %s (%.3f).",
+                 format(toVec3(grid_.point(v0))).c_str(), best_dist);
         
         ShortestPaths sp(grid_, v0, neighborhood_, max_costs_);
         ROS_INFO("Dijkstra (%lu pts): %.3f s.", grid_.size(), t_part.seconds_elapsed());
