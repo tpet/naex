@@ -182,6 +182,11 @@ public:
         std::vector<float> max_costs;
         pnh_.param("max_costs", max_costs, max_costs);
         max_costs_ = max_costs;
+        std::vector<float> default_costs;
+        pnh_.param("default_costs", default_costs, default_costs);
+        default_costs_ = default_costs;
+        grid_ = Grid(cell_size, forget_factor, default_costs_);
+
         pnh_.param("planning_freq", planning_freq_, planning_freq_);
         pnh_.param("start_on_request", start_on_request_, start_on_request_);
         pnh_.param("stop_on_goal", stop_on_goal_, stop_on_goal_);
@@ -542,6 +547,7 @@ protected:
     // Graph
     int neighborhood_{8};
     Costs max_costs_;
+    Costs default_costs_;
 
     // Planning
     // Re-planning frequency, repeating the last request if positive.

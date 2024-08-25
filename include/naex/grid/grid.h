@@ -132,9 +132,11 @@ struct Costs
 class Grid
 {
 public:
-    Grid(float cell_size = 1.f, float forget_factor = 1.f):
+    Grid(float cell_size = 1.f, float forget_factor = 1.f,
+         const Costs& default_costs = Costs()):
         cell_size_(cell_size),
-        forget_factor_(forget_factor)
+        forget_factor_(forget_factor),
+        default_costs_(default_costs)
     {}
 
     bool hasCell(const Cell& c) const
@@ -145,7 +147,7 @@ public:
     {
         cell_to_id_[c] = size();
         id_to_cell_.push_back(c);
-        id_to_costs_.push_back(Costs());
+        id_to_costs_.push_back(default_costs_);
     }
 
     const Cell& cell(const CellId& id) const
@@ -237,6 +239,7 @@ public:
 protected:
     float cell_size_;
     float forget_factor_;
+    Costs default_costs_;
 
     // CellId to Costs
     std::vector<Costs> id_to_costs_;
