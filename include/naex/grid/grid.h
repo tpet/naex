@@ -226,6 +226,10 @@ public:
     {
         return updateCellCost(pointToCell(p), level, cost);
     }
+    float cellSize() const
+    {
+        return cell_size_;
+    }
 
     bool empty() const
     {

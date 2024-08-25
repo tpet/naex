@@ -86,7 +86,7 @@ Cost distance8(int i)
     case 2:
     case 4:
     case 6:
-        return 1.0;
+        return 1;
     case 1:
     case 3:
     case 5:
@@ -198,8 +198,9 @@ public:
             return INF;
         }
 
-        auto cost = (c0.total() + c1.total()) / 2.f;
+        auto cost = 1 + (c0.total() + c1.total()) / 2;
 
+        cost *= grid_.cellSize();
         if (neighborhood_ == 8)
         {
             cost *= distance8(target_index(e));
