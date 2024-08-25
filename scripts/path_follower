@@ -40,6 +40,7 @@ from tf.transformations import (
     euler_from_matrix,
     euler_matrix,
 )
+import traceback
 
 np.set_printoptions(precision=2)
 
@@ -655,6 +656,7 @@ class PathFollower(object):
         except rospy.ROSTimeMovedBackwardsException as ex:
             rospy.logerr('Time moved backward: %s.', ex)
         except Exception as ex:
+            traceback.print_exc()
             rospy.logerr('Unknown exception during contol: %s.', ex)
 
 
