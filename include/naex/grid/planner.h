@@ -165,6 +165,7 @@ public:
         pnh_.param("position_field", position_field_, position_field_);
         pnh_.param("cost_fields", cost_fields_, cost_fields_);
         pnh_.param("cloud_weights", cloud_weights_, cloud_weights_);
+        pnh_.param("cloud_levels", cloud_levels_, cloud_levels_);
         pnh_.param("map_frame", map_frame_, map_frame_);
         pnh_.param("robot_frame", robot_frame_, robot_frame_);
         pnh_.param("tf_timeout", tf_timeout_, tf_timeout_);
@@ -483,7 +484,8 @@ public:
                  robot_frame_.c_str(), res.plan.poses.size(), map_frame_.c_str(), t.seconds_elapsed());
     }
 
-    void receiveCloud(const sensor_msgs::PointCloud2::ConstPtr& input, uint8_t level)
+    // void receiveCloud(const sensor_msgs::PointCloud2::ConstPtr& input, uint8_t level)
+    void receiveCloud(const sensor_msgs::PointCloud2::ConstPtr& input, int i)
     {
         const auto age = (ros::Time::now() - input->header.stamp).toSec();
         if (age > max_cloud_age_)
@@ -499,15 +501,17 @@ public:
 
         Eigen::Isometry3f transform(tf2::transformToEigen(cloud_to_map.transform));
 
+        const uint8_t level = i < cloud_levels_.size() ? cloud_levels_[i] : i;
+        const float weight = i < cloud_weights_.size() ? cloud_weights_[i] : 1.0;
+        const std::string cost_field = i < cost_fields_.size() ? cost_fields_[i] : "cost";
         sensor_msgs::PointCloud2ConstIterator<float> x_it(*input, position_field_);
-        sensor_msgs::PointCloud2ConstIterator<float> cost_it(*input,
-            level < cost_fields_.size() ? cost_fields_[level].c_str() : "cost");
+        sensor_msgs::PointCloud2ConstIterator<float> cost_it(*input, cost_field);
 
         for (int i = 0; i < input->height * input->width; ++i, ++x_it, ++cost_it)
         {
             Vec3 p(x_it[0], x_it[1], x_it[2]);
             p = transform * p;
-            grid_.updatePointCost({p.x(), p.y()}, level, cloud_weights_[level]*cost_it[0]);
+            grid_.updatePointCost({p.x(), p.y()}, level, weight * cost_it[0]);
         }
     }
 
@@ -563,6 +567,7 @@ protected:
     std::string position_field_{"x"};
     std::vector<std::string> cost_fields_;
     std::vector<float> cloud_weights_;
+    std::vector<int> cloud_levels_;
     float max_cloud_age_{5.0};
     float input_range_{10.0};
 
