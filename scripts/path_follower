@@ -118,9 +118,11 @@ class PathFollower(object):
             self.max_path_dists = []
         self.look_ahead = rospy.get_param('~look_ahead', 1.)
         self.max_speed = rospy.get_param('~max_speed', 1.0)  # m/s
+        self.max_accel = rospy.get_param('~max_accel', 1.0)  # m/s^2
         self.max_force_through_speed = rospy.get_param('~max_force_through_speed', .25)
         self.turn_on_spot_angle = rospy.get_param('~turn_on_spot_angle', np.pi / 6)
         self.max_angular_rate = rospy.get_param('~max_angular_rate', 1.0)  # rad/s
+        self.max_angular_accel = rospy.get_param('~max_angular_accel', 2.0)  # rad/s^2
         self.max_roll = rospy.get_param('~max_roll', 0.7)  # rad
         self.max_pitch = rospy.get_param('~max_pitch', 0.7)  # rad
         self.keep_path = rospy.get_param('~keep_path', 30.0)
@@ -152,6 +154,10 @@ class PathFollower(object):
         self.path_traversed = []
         self.stuck_since = None
         self.idle_since = None
+        # Acceleration limitation
+        self.prev_time = None
+        self.prev_speed = None
+        self.prev_angular_rate = None
 
         self.cloud_lock = RLock()
         self.cloud_msg = None
@@ -504,6 +510,38 @@ class PathFollower(object):
 
         return cost, roll, pitch
 
+    def limit_acceleration(self, speed, angular_rate):
+        now = rospy.Time.now()
+        if self.prev_time is None:
+            self.prev_time = now
+            self.prev_speed = speed
+            self.prev_angular_rate = angular_rate
+            return speed, angular_rate
+
+        dt = (now - self.prev_time).to_sec()
+        if dt < 1e-3:
+            return self.prev_speed, self.prev_angular_rate
+
+        min_speed = self.prev_speed - self.max_accel * dt
+        max_speed = self.prev_speed + self.max_accel * dt
+        if speed < min_speed or speed > max_speed:
+            rospy.loginfo('Cannot reach desired speed %.2f m/s, out of acceleration limits [%.2f, %.2f] m/s.',
+                          speed, min_speed, max_speed)
+        speed = np.clip(speed, min_speed, max_speed)
+
+        min_angular_rate = self.prev_angular_rate - self.max_angular_accel * dt
+        max_angular_rate = self.prev_angular_rate + self.max_angular_accel * dt
+        if angular_rate < min_angular_rate or angular_rate > max_angular_rate:
+            rospy.loginfo('Cannot reach desired angular rate %.2f rad/s, out of acceleration limits [%.2f, %.2f] rad/s.',
+                          angular_rate, min_angular_rate, max_angular_rate)
+        angular_rate = np.clip(angular_rate, min_angular_rate, max_angular_rate)
+
+        self.prev_time = now
+        self.prev_speed = speed
+        self.prev_angular_rate = angular_rate
+
+        return speed, angular_rate
+
     def control(self, event):
         try:
             t = timer()
@@ -643,6 +681,7 @@ class PathFollower(object):
             speed /= (1. + pose_cost)
             max_speed = self.max_speed if self.stuck_since is None else self.max_force_through_speed
             speed = vel_sign * np.clip(speed, 0., max_speed)
+            speed, angular_rate = self.limit_acceleration(speed, angular_rate)
 
             msg = Twist()
             msg.angular.z = angular_rate

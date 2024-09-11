@@ -28,10 +28,12 @@
             max_path_dist: [0.8, 2.5, 2.5, 2.5]
             look_ahead: 0.8
             max_speed: 1.0
+            max_accel: 1.0
             allow_backward: false
             max_force_through_speed: 0.2
             turn_on_spot_angle: 0.524  <!-- 30 deg. -->
             max_angular_rate: 1.5
+            max_angular_accel: 2.0
             keep_path: 3.
             keep_cloud_box: [[-3.0, 3.0], [-3.0, 3.0], [-2.0, 2.0]]
             clearance_box: [[-0.6, 0.6], [-0.45, 0.45], [0.2, 0.7]]
