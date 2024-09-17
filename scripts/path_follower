@@ -98,25 +98,27 @@ def pose_in_2d(pose, in_place=False):
 class PathFollower(object):
     def __init__(self):
         self.map_frame = rospy.get_param('~map_frame', 'map')
-        self.odom_frame = rospy.get_param('~odom_frame', 'odom')            # No-wait frame
+        self.odom_frame = rospy.get_param('~odom_frame', 'odom')  # No-wait frame
         self.robot_frame = rospy.get_param('~robot_frame', 'base_footprint')
-        self.control_freq = rospy.get_param('~control_freq', 10.0)
+        self.control_freq = rospy.get_param('~control_freq', 10.0)  # Hz
         assert 1.0 < self.control_freq < 25.0
         self.local_goal_dims = rospy.get_param('~local_goal_dims', 'xy')
         assert self.local_goal_dims in ('xy', 'xyz')
-        self.goal_reached_dist = rospy.get_param('~goal_reached_dist', 0.2)
-        self.goal_reached_angle = rospy.get_param('~goal_reached_angle', 0.2)
+        self.goal_reached_dist = rospy.get_param('~goal_reached_dist', 0.2)  # m
+        self.goal_reached_angle = rospy.get_param('~goal_reached_angle', 0.2)  # rad
         self.use_path_theta = rospy.get_param('~use_path_theta', 'last')
         assert self.use_path_theta in ('none', 'last', 'all')
-        self.max_age = rospy.get_param('~max_age', 1.0)
-        self.max_path_dist = rospy.get_param('~max_path_dist', 0.5)
+        self.max_age = rospy.get_param('~max_age', 1.0)  # s
+        self.max_path_dist = rospy.get_param('~max_path_dist', 0.5)  # m
         if isinstance(self.max_path_dist, list):
             assert len(self.max_path_dist) > 0
             self.max_path_dists = self.max_path_dist
             self.max_path_dist = self.max_path_dists.pop()
         else:
             self.max_path_dists = []
-        self.look_ahead = rospy.get_param('~look_ahead', 1.)
+        self.look_ahead = rospy.get_param('~look_ahead', 1.)  # m
+        self.p_angle = rospy.get_param('~p_angle', 1.0)
+        self.p_dist = rospy.get_param('~p_dist', 1.0)
         self.max_speed = rospy.get_param('~max_speed', 1.0)  # m/s
         self.max_accel = rospy.get_param('~max_accel', 1.0)  # m/s^2
         self.max_force_through_speed = rospy.get_param('~max_force_through_speed', .25)
@@ -125,8 +127,9 @@ class PathFollower(object):
         self.max_angular_accel = rospy.get_param('~max_angular_accel', 2.0)  # rad/s^2
         self.max_roll = rospy.get_param('~max_roll', 0.7)  # rad
         self.max_pitch = rospy.get_param('~max_pitch', 0.7)  # rad
-        self.keep_path = rospy.get_param('~keep_path', 30.0)
+        self.keep_path = rospy.get_param('~keep_path', 30.0)  # s
         self.increasing_waypoint_index = rospy.get_param('~increasing_waypoint_index', True)
+        self.estimate_path_costs = rospy.get_param('~estimate_path_costs', False)
         # Keep only points inside a box for clearance check.
         keep_cloud_box = rospy.get_param('~keep_cloud_box', [[-4.0, 4.0],
                                                              [-4.0, 4.0],
@@ -173,7 +176,7 @@ class PathFollower(object):
         self.markers_pub = rospy.Publisher('~markers', MarkerArray, queue_size=2)
         self.path_sub = rospy.Subscriber('path', Path, self.path_received, queue_size=2)
         self.cloud_sub = rospy.Subscriber('cloud', PointCloud2, self.cloud_received, queue_size=2)
-        self.timer = rospy.Timer(rospy.Duration(1. / self.control_freq), self.control)
+        self.timer = rospy.Timer(rospy.Duration(1. / self.control_freq), self.control_safe)
 
     def lookup_transform(self, target_frame, source_frame, time,
                          no_wait_frame=None, timeout=0.0):
@@ -266,7 +269,8 @@ class PathFollower(object):
             self.clear_path()
             self.path_msg = msg
             self.path_received_time = rospy.Time.now()
-            self.path_costs = self.compute_path_costs(self.path_msg.poses)
+            if self.estimate_path_costs:
+                self.path_costs = self.compute_path_costs(self.path_msg.poses)
             self.next_path_msg = None
             self.path = path
             self.path_x_index = path_x_index
@@ -542,154 +546,157 @@ class PathFollower(object):
 
         return speed, angular_rate
 
+    def publish_smoothed(self, linear, angular):
+
+        # Limit linear and angular acceleration.
+        linear, angular = self.limit_acceleration(linear, angular)
+        
+        msg = Twist()
+        msg.angular.z = angular
+        msg.linear.x = linear
+        self.cmd_pub.publish(msg)
+        rospy.loginfo('Linear: %.2f m/s, angular rate: %.1f rad/s.',
+                      linear, angular)
+
     def control(self, event):
-        try:
-            t = timer()
-            with self.path_lock:
-                pose_msg = self.get_robot_pose(self.map_frame)
-                cur_pos = numpify(pose_msg.position)
-                prev_pos = numpify(self.path_traversed[0].position) if len(self.path_traversed) > 0 else None
-                if prev_pos is None or np.linalg.norm(cur_pos - prev_pos) > 0.1:
-                    self.path_traversed.append(pose_msg)
-                if len(self.path_traversed) > 3000:
-                    self.path_traversed = self.path_traversed[-3000:]
+        with self.path_lock:
+            pose_msg = self.get_robot_pose(self.map_frame)
+            cur_pos = numpify(pose_msg.position)
+            prev_pos = numpify(self.path_traversed[0].position) if len(self.path_traversed) > 0 else None
+            if prev_pos is None or np.linalg.norm(cur_pos - prev_pos) > 0.1:
+                self.path_traversed.append(pose_msg)
+            if len(self.path_traversed) > 3000:
+                self.path_traversed = self.path_traversed[-3000:]
 
-                if self.path_msg is None:
-                    self.maybe_invoke_backtracking()
-                    self.cmd_pub.publish(Twist())
+            if self.path_msg is None:
+                self.maybe_invoke_backtracking()
+                self.publish_smoothed(0., 0.)
+                return
+
+            pose = numpify(pose_msg)
+            rospy.logdebug('Control from robot position: [%.2f, %.2f, %.2f]',
+                            pose[0, 3], pose[1, 3], pose[2, 3])
+
+            # Get the last position on the path within look-ahead radius,
+            # else extend the radius to max. path distance.
+            if self.local_goal_dims == 'xy':
+                pose = pose_in_2d(pose)
+            ind = self.path_x_index.query_ball_point(pose[:3, 3:].T, r=self.look_ahead)[0]
+            if not ind:
+                rospy.logwarn('Distance to path higher than look ahead %.1f m.', self.look_ahead)
+                ind = self.path_x_index.query_ball_point(pose[:3, 3:].T, r=self.max_path_dist)[0]
+            if not ind:
+                rospy.logwarn('Distance to path higher than maximum %.1f m. Stopping.', self.max_path_dist)
+                self.clear_path()
+                self.maybe_invoke_backtracking()
+                self.publish_smoothed(0., 0.)
+                return
+
+            self.idle_since = None
+
+            # Ensure minimum look-ahead still applies for long distances
+            # between poses, e.g. starting position far from the next one.
+            # look_ahead, i = self.path_x_index.query(pose[:3, 3:].T)
+            # look_ahead, i = look_ahead.item(), i.item()
+            last = len(self.path_msg.poses) - 1
+            i = max(ind)
+            assert self.path.shape[1] == 3
+            goal = self.path[i, :].reshape([3, 1])
+            look_ahead = np.linalg.norm(pose[:3, 3:] - goal)
+            while i < last and look_ahead < self.look_ahead:
+                i += 1
+                new_goal = self.path[i, :].reshape([3, 1])
+                look_ahead += np.linalg.norm(new_goal - goal)
+                goal = new_goal
+
+            if self.increasing_waypoint_index and self.waypoint_index:
+                i = max(i, self.waypoint_index)
+            self.waypoint_index = i
+
+            clearance_indices = range(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
+            self.publish_markers(self.path_msg, clearance_indices=clearance_indices, waypoint_indices=[i])
+            if not self.check_pose_clearance(self.path_msg.poses[i].pose)[0]:
+                if self.stuck_since is None:
+                    self.stuck_since = rospy.Time.now()
+                stuck_duration = (rospy.Time.now() - self.stuck_since).to_sec()
+                if stuck_duration < self.force_through_after:
+                    rospy.logwarn('Path to goal obstructed (for %.1f s), waiting...', stuck_duration)
+                    self.publish_smoothed(0., 0.)
                     return
-
-                pose = numpify(pose_msg)
-                rospy.logdebug('Control from robot position: [%.2f, %.2f, %.2f]',
-                               pose[0, 3], pose[1, 3], pose[2, 3])
-
-                # Get the last position on the path within look-ahead radius,
-                # else extend the radius to max. path distance.
-                if self.local_goal_dims == 'xy':
-                    pose = pose_in_2d(pose)
-                ind = self.path_x_index.query_ball_point(pose[:3, 3:].T, r=self.look_ahead)[0]
-                if not ind:
-                    rospy.logwarn('Distance to path higher than look ahead %.1f m.', self.look_ahead)
-                    ind = self.path_x_index.query_ball_point(pose[:3, 3:].T, r=self.max_path_dist)[0]
-                if not ind:
-                    rospy.logwarn('Distance to path higher than maximum %.1f m. Stopping.', self.max_path_dist)
-                    self.clear_path()
-                    self.maybe_invoke_backtracking()
-                    self.cmd_pub.publish(Twist())
-                    return
-
-                self.idle_since = None
-
-                # Ensure minimum look-ahead still applies for long distances
-                # between poses, e.g. starting position far from the next one.
-                # look_ahead, i = self.path_x_index.query(pose[:3, 3:].T)
-                # look_ahead, i = look_ahead.item(), i.item()
-                last = len(self.path_msg.poses) - 1
-                i = max(ind)
-                assert self.path.shape[1] == 3
-                goal = self.path[i, :].reshape([3, 1])
-                look_ahead = np.linalg.norm(pose[:3, 3:] - goal)
-                while i < last and look_ahead < self.look_ahead:
-                    i += 1
-                    new_goal = self.path[i, :].reshape([3, 1])
-                    look_ahead += np.linalg.norm(new_goal - goal)
-                    goal = new_goal
-
-                if self.increasing_waypoint_index and self.waypoint_index:
-                    i = max(i, self.waypoint_index)
-                self.waypoint_index = i
-
-                clearance_indices = range(max(i + self.show_clearance[0], 0), min(i + self.show_clearance[1], last))
-                self.publish_markers(self.path_msg, clearance_indices=clearance_indices, waypoint_indices=[i])
-                if not self.check_pose_clearance(self.path_msg.poses[i].pose)[0]:
-                    if self.stuck_since is None:
-                        self.stuck_since = rospy.Time.now()
-                    stuck_duration = (rospy.Time.now() - self.stuck_since).to_sec()
-                    if stuck_duration < self.force_through_after:
-                        rospy.logwarn('Path to goal obstructed (for %.1f s), waiting...', stuck_duration)
-                        self.cmd_pub.publish(Twist())
-                        return
-                    else:
-                        rospy.logwarn('Path to goal obstructed for %.1f s >= %.1f s, forcing through...',
-                                      stuck_duration, self.force_through_after)
                 else:
-                    if self.stuck_since:
-                        rospy.logwarn('Path free again.')
-                    self.stuck_since = None
-
-                # Convert the goal into robot frame.
-                local_goal = p2e(np.linalg.solve(pose, e2p(goal)))
-                if self.local_goal_dims == 'xy':
-                    local_goal[2, 0] = 0.
-                dist = np.linalg.norm(local_goal)
-                rospy.logdebug('Local goal: %.2f, %.2f, %.2f (%.2f m apart)',
-                               *(local_goal.ravel().tolist() + [dist]))
-                rospy.loginfo_throttle(1.0, 'Local goal: %.2f, %.2f, %.2f (%.2f m apart)',
-                                       *(local_goal.ravel().tolist() + [dist]))
-
-                # TODO: Use goal theta.
-                # Angular displacement from [-pi, pi)
-                if (True or self.use_path_theta == 'none'
-                        or (self.use_path_theta == 'last' and i < last)
-                        or np.isnan(goal[2])):
-                    angle = np.arctan2(local_goal[1, 0], local_goal[0, 0])
-                else:
-                    goal_theta = goal[2]
-                    rospy.loginfo('Using path theta: %.1f.', goal_theta)
-
-                # Clear path and stop if the goal has been reached.
-                if (i == last
-                        and dist <= self.goal_reached_dist
-                        and abs(angle) <= self.goal_reached_angle):
-                    est_time = self.path_costs[-1]
-                    act_time = (rospy.Time.now() - self.path_received_time).to_sec()
-                    rospy.loginfo('Goal reached: %.2f m from robot (<= %.2f m). Est. time %.1f s, actual %.1f s.',
-                                  dist, self.goal_reached_dist, est_time, act_time)
-                    self.clear_path()
-                    if self.next_path_msg:
-                        rospy.loginfo("Using stored subsequent path (%i poses).",
-                                      len(self.next_path_msg.poses))
-                        self.path_received(self.next_path_msg)
-                    else:
-                        self.cmd_pub.publish(Twist())
-                    if self.max_path_dists:
-                        self.max_path_dist = self.max_path_dists.pop()
-                    return
-            
-            if self.allow_backward and np.abs(angle) > np.pi / 2.:
-                angle = np.mod(angle + np.pi / 2., np.pi) - np.pi / 2.
-                vel_sign = -1.
+                    rospy.logwarn('Path to goal obstructed for %.1f s >= %.1f s, forcing through...',
+                                  stuck_duration, self.force_through_after)
             else:
-                vel_sign = 1.
+                if self.stuck_since:
+                    rospy.logwarn('Path free again.')
+                self.stuck_since = None
 
-            # Angular rate
-            p_angle = 1.5
-            angular_rate = np.clip(p_angle * angle, -self.max_angular_rate, self.max_angular_rate)
+            # Convert the goal into robot frame.
+            local_goal = p2e(np.linalg.solve(pose, e2p(goal)))
+            if self.local_goal_dims == 'xy':
+                local_goal[2, 0] = 0.
+            dist = np.linalg.norm(local_goal)
+            rospy.logdebug('Local goal: %.2f, %.2f, %.2f (%.2f m apart)',
+                           *(local_goal.ravel().tolist() + [dist]))
+            rospy.loginfo_throttle(1.0, 'Local goal: %.2f, %.2f, %.2f (%.2f m apart)',
+                                   *(local_goal.ravel().tolist() + [dist]))
 
-            # Linear velocity
-            # p_dist = 1.5 * max(0., np.pi / 4. - abs(angle))
-            p_dist = 1.5 * max(0., 1. - (abs(angle) / self.turn_on_spot_angle)**2)
-            # p_dist = 1.5 * max(np.cos(3. * angle), 0.)
-            # p_dist = 1.5 * np.exp(-(angle/0.25)**2)
-            speed = p_dist * dist
-            # add angular (similar to traversability) cost
-            # roll, pitch, yaw = euler_from_matrix(pose)
-            pose_cost, roll, pitch = self.pose_cost(pose)
-            rospy.logdebug('Roll: %.3f, max roll: %.3f', roll, self.max_roll)
-            rospy.logdebug('Pitch: %.3f, max pitch: %.3f', pitch, self.max_pitch)
-            # trav_cost = np.abs(roll) / self.max_roll + np.abs(pitch) / self.max_pitch
-            speed /= (1. + pose_cost)
-            max_speed = self.max_speed if self.stuck_since is None else self.max_force_through_speed
-            speed = vel_sign * np.clip(speed, 0., max_speed)
-            speed, angular_rate = self.limit_acceleration(speed, angular_rate)
+            # TODO: Use goal theta.
+            # Angular displacement from [-pi, pi)
+            if (True or self.use_path_theta == 'none'
+                    or (self.use_path_theta == 'last' and i < last)
+                    or np.isnan(goal[2])):
+                angle = np.arctan2(local_goal[1, 0], local_goal[0, 0])
+            else:
+                goal_theta = goal[2]
+                rospy.loginfo('Using path theta: %.1f.', goal_theta)
 
-            msg = Twist()
-            msg.angular.z = angular_rate
-            msg.linear.x = speed
-            self.cmd_pub.publish(msg)
-            rospy.loginfo('Local goal: %s, linear: %.2f m/s, angular: %.1f rad/s (%.3f s).',
-                          local_goal.ravel(), speed, angular_rate, timer() - t)
+            # Clear path and stop if the goal has been reached.
+            if (i == last
+                    and dist <= self.goal_reached_dist
+                    and abs(angle) <= self.goal_reached_angle):
+                est_time = self.path_costs[-1] if self.path_costs else float('nan')
+                act_time = (rospy.Time.now() - self.path_received_time).to_sec()
+                rospy.logwarn('Goal reached: %.2f m from robot (<= %.2f m). Est. time %.1f s, actual %.1f s.',
+                              dist, self.goal_reached_dist, est_time, act_time)
+                self.clear_path()
+                if self.next_path_msg:
+                    rospy.loginfo("Using stored subsequent path (%i poses).",
+                                  len(self.next_path_msg.poses))
+                    self.path_received(self.next_path_msg)
+                else:
+                    self.publish_smoothed(0., 0.)
+                if self.max_path_dists:
+                    self.max_path_dist = self.max_path_dists.pop()
+                return
+        
+        if self.allow_backward and np.abs(angle) > np.pi / 2.:
+            angle = np.mod(angle + np.pi / 2., np.pi) - np.pi / 2.
+            vel_sign = -1.
+        else:
+            vel_sign = 1.
 
+        # Angular rate
+        angular_rate = self.p_angle * angle
+        angular_rate = np.clip(angular_rate, -self.max_angular_rate, self.max_angular_rate)
+
+        # Linear velocity
+        speed = vel_sign * self.p_dist * dist
+        speed = speed * max(0., 1. - (abs(angle) / self.turn_on_spot_angle)**2)
+        # Limit speed for higher roll and pitch.
+        pose_cost, roll, pitch = self.pose_cost(pose)
+        rospy.logdebug('Roll: %.3f, max roll: %.3f', roll, self.max_roll)
+        rospy.logdebug('Pitch: %.3f, max pitch: %.3f', pitch, self.max_pitch)
+        speed /= (1. + pose_cost)
+        max_speed = self.max_speed if self.stuck_since is None else self.max_force_through_speed
+        speed = np.clip(speed, -max_speed, max_speed)
+
+        self.publish_smoothed(speed, angular_rate)
+
+    def control_safe(self, event):
+        t = timer()
+        try:
+            self.control(event)
         except tf2_ros.TransformException as ex:
             rospy.logerr('Robot pose lookup failed: %s.', ex)
         except rospy.ROSTimeMovedBackwardsException as ex:
@@ -697,6 +704,12 @@ class PathFollower(object):
         except Exception as ex:
             traceback.print_exc()
             rospy.logerr('Unknown exception during contol: %s.', ex)
+
+        t = timer() - t
+        if t >= 1. / self.control_freq:
+            rospy.logwarn('Control loop iteration took %.3f s.', t)
+        else:
+            rospy.loginfo_throttle(5.0, 'Control loop iteration took %.3f s.', t)
 
 
 if __name__ == '__main__':
